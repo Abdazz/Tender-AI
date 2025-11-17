@@ -130,26 +130,28 @@ jobs:
           PORT: ${{ secrets.PRODUCTION_SSH_PORT || 22 }}
           DEPLOY_PATH: ${{ secrets.PRODUCTION_DEPLOY_PATH || '/opt/tenderai-bf' }}
         run: |
-          ssh -p ${PORT} ${USER}@${HOST} << 'ENDSSH'
+          ssh -p ${PORT} ${USER}@${HOST} "bash -s" << ENDSSH
             set -e
             
+            DEPLOY_PATH="${DEPLOY_PATH}"
+            
             # Debug: Show environment variables
-            echo "🔍 DEBUG: DEPLOY_PATH = ${DEPLOY_PATH}"
-            echo "🔍 DEBUG: Current user = $(whoami)"
-            echo "🔍 DEBUG: Current directory = $(pwd)"
+            echo "🔍 DEBUG: DEPLOY_PATH = \${DEPLOY_PATH}"
+            echo "🔍 DEBUG: Current user = \$(whoami)"
+            echo "🔍 DEBUG: Current directory = \$(pwd)"
             
             # Debug: Check if directory exists
-            if [ -d "${DEPLOY_PATH}" ]; then
-              echo "✅ Directory ${DEPLOY_PATH} exists"
-              ls -la "${DEPLOY_PATH}"
+            if [ -d "\${DEPLOY_PATH}" ]; then
+              echo "✅ Directory \${DEPLOY_PATH} exists"
+              ls -la "\${DEPLOY_PATH}"
             else
-              echo "❌ Directory ${DEPLOY_PATH} does NOT exist"
+              echo "❌ Directory \${DEPLOY_PATH} does NOT exist"
               exit 1
             fi
             
             # Change to deploy directory
-            cd ${DEPLOY_PATH}
-            echo "🔍 DEBUG: Changed to $(pwd)"
+            cd \${DEPLOY_PATH}
+            echo "🔍 DEBUG: Changed to \$(pwd)"
             
             # Debug: Check git status
             if [ -d ".git" ]; then
@@ -242,9 +244,12 @@ jobs:
           PORT: ${{ secrets.STAGING_SSH_PORT || 22 }}
           DEPLOY_PATH: ${{ secrets.STAGING_DEPLOY_PATH || '/opt/tenderai-bf-staging' }}
         run: |
-          ssh -p ${PORT} ${USER}@${HOST} << 'ENDSSH'
+          ssh -p ${PORT} ${USER}@${HOST} "bash -s" << ENDSSH
             set -e
-            cd ${DEPLOY_PATH}
+            
+            DEPLOY_PATH="${DEPLOY_PATH}"
+            
+            cd \${DEPLOY_PATH}
             
             # Pull latest code
             git pull origin develop
