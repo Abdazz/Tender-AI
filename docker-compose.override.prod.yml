@@ -14,6 +14,10 @@ services:
   postgres:
     ports: []  # Remove port exposure to avoid conflicts with host PostgreSQL
 
+  # MinIO - don't expose ports on host in production (only internal access)
+  minio:
+    ports: []  # Remove port exposure to avoid conflicts
+
   api:
     image: ghcr.io/abdazz/tenderai-bf-api:latest
     build:
