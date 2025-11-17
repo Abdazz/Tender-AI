@@ -1,16 +1,34 @@
 name: CI/CD Pipeline
 
 on:
+  # Déclenchement manuel depuis l'interface GitHub
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy'
+        required: true
+        type: choice
+        options:
+          - production
+          - staging
+          - both
+      skip_build:
+        description: 'Skip Docker build (use existing images)'
+        required: false
+        type: boolean
+        default: false
+  
+  # Déclenchement automatique uniquement sur les tags
   push:
-    branches:
-      - main
-      - develop
     tags:
       - 'v*'
-  pull_request:
     branches:
       - main
       - develop
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - '.gitignore'
 
 env:
   REGISTRY: ghcr.io
@@ -21,7 +39,14 @@ jobs:
   build-and-push:
     name: Build & Push Docker Images
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop' || startsWith(github.ref, 'refs/tags/v'))
+    # Build seulement si :
+    # - Tag v* (release)
+    # - Workflow manuel sans skip_build
+    # - Push avec [build] dans le message de commit
+    if: |
+      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) ||
+      (github.event_name == 'workflow_dispatch' && inputs.skip_build == false) ||
+      (github.event_name == 'push' && contains(github.event.head_commit.message, '[build]'))
     permissions:
       contents: read
       packages: write
@@ -74,7 +99,12 @@ jobs:
     name: Deploy to Production
     runs-on: ubuntu-latest
     needs: [build-and-push]
-    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
+    if: |
+      always() &&
+      (needs.build-and-push.result == 'success' || needs.build-and-push.result == 'skipped') &&
+      (
+        github.ref == 'refs/heads/main'
+      )
     environment:
       name: production
       url: https://tender-ai.yulcom.net
@@ -102,30 +132,62 @@ jobs:
         run: |
           ssh -p ${PORT} ${USER}@${HOST} << 'ENDSSH'
             set -e
+            
+            # Debug: Show environment variables
+            echo "🔍 DEBUG: DEPLOY_PATH = ${DEPLOY_PATH}"
+            echo "🔍 DEBUG: Current user = $(whoami)"
+            echo "🔍 DEBUG: Current directory = $(pwd)"
+            
+            # Debug: Check if directory exists
+            if [ -d "${DEPLOY_PATH}" ]; then
+              echo "✅ Directory ${DEPLOY_PATH} exists"
+              ls -la "${DEPLOY_PATH}"
+            else
+              echo "❌ Directory ${DEPLOY_PATH} does NOT exist"
+              exit 1
+            fi
+            
+            # Change to deploy directory
             cd ${DEPLOY_PATH}
+            echo "🔍 DEBUG: Changed to $(pwd)"
+            
+            # Debug: Check git status
+            if [ -d ".git" ]; then
+              echo "✅ Git repository found"
+              git status
+            else
+              echo "❌ Not a git repository"
+              exit 1
+            fi
             
             # Pull latest code
+            echo "📥 Pulling latest code..."
             git pull origin main
             
             # Login to GitHub Container Registry
+            echo "🔐 Logging in to registry..."
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
             
             # Set environment to production
             export ENVIRONMENT=production
             
             # Pull latest images (use pre-built images from registry)
+            echo "🐳 Pulling Docker images..."
             docker-compose pull api ui worker || true
             
             # Run database migrations
+            echo "🗄️ Running database migrations..."
             docker-compose run --rm api alembic upgrade head
             
             # Restart services with zero-downtime
+            echo "🚀 Restarting services..."
             docker-compose up -d --no-deps api ui worker
             
             # Clean up old images
+            echo "🧹 Cleaning up..."
             docker image prune -f
             
-            echo "Deployment completed successfully"
+            echo "✅ Deployment completed successfully"
           ENDSSH
 
       - name: Health check
@@ -148,7 +210,13 @@ jobs:
     name: Deploy to Staging
     runs-on: ubuntu-latest
     needs: [build-and-push]
-    if: github.ref == 'refs/heads/develop'
+    if: |
+      always() &&
+      (needs.build-and-push.result == 'success' || needs.build-and-push.result == 'skipped') &&
+      (
+        github.ref == 'refs/heads/develop' ||
+        (github.event_name == 'workflow_dispatch' && (inputs.environment == 'staging' || inputs.environment == 'both'))
+      )
     environment:
       name: staging
       url: https://staging.tender-ai.yulcom.net
@@ -212,7 +280,9 @@ jobs:
     name: Security Scan
     runs-on: ubuntu-latest
     needs: [build-and-push]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: |
+      needs.build-and-push.result == 'success' &&
+      (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
 
     steps:
       - name: Checkout code
