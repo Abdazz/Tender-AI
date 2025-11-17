@@ -12,11 +12,13 @@ version: '3.8'
 services:
   # PostgreSQL - don't expose port on host in production (only internal access)
   postgres:
-    ports: []  # Remove port exposure to avoid conflicts with host PostgreSQL
+    # Override to remove ports - empty array should work but we'll be explicit
+    ports: !reset []
 
-  # MinIO - don't expose ports on host in production (only internal access)
+  # MinIO - don't expose ports on host in production (only internal access)  
   minio:
-    ports: []  # Remove port exposure to avoid conflicts
+    # Override to remove ports
+    ports: !reset []
 
   api:
     image: ghcr.io/abdazz/tenderai-bf-api:latest
