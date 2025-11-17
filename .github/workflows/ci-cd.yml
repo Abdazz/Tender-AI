@@ -184,13 +184,17 @@ jobs:
             echo "🐳 Pulling Docker images..."
             docker-compose pull api ui worker || true
             
-            # Run database migrations
-            echo "🗄️ Running database migrations..."
-            docker-compose run --rm api alembic upgrade head
-            
-            # Restart services with zero-downtime
-            echo "🚀 Restarting services..."
+            # Start services (this will also create the network and start dependencies)
+            echo "� Starting services..."
             docker-compose up -d
+            
+            # Wait for database to be ready
+            echo "⏳ Waiting for database..."
+            sleep 10
+            
+            # Run database migrations
+            echo "�️ Running database migrations..."
+            docker-compose exec -T api alembic upgrade head
             
             # Clean up old images
             echo "🧹 Cleaning up..."
@@ -276,11 +280,14 @@ jobs:
             # Pull latest images (use pre-built images from registry)
             docker-compose pull api ui worker || true
             
-            # Run database migrations
-            docker-compose run --rm api alembic upgrade head
-            
-            # Restart services
+            # Start services
             docker-compose up -d
+            
+            # Wait for database to be ready
+            sleep 10
+            
+            # Run database migrations
+            docker-compose exec -T api alembic upgrade head
             
             # Clean up old images
             docker image prune -f
