@@ -169,6 +169,13 @@ jobs:
             echo "📝 Configuring production environment..."
             cp docker-compose.override.prod.yml docker-compose.override.yml
             
+            # Debug: Verify override file content
+            echo "🔍 DEBUG: Checking override file..."
+            ls -la docker-compose.override.yml
+            echo "--- Content of docker-compose.override.yml ---"
+            cat docker-compose.override.yml
+            echo "--- End of override file ---"
+            
             # Login to GitHub Container Registry
             echo "🔐 Logging in to registry..."
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
