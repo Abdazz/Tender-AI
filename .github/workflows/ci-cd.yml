@@ -165,12 +165,20 @@ jobs:
             echo "📥 Pulling latest code..."
             git pull origin main
             
+            # Copy production override file
+            echo "📝 Configuring production environment..."
+            cp docker-compose.override.prod.yml docker-compose.override.yml
+            
             # Login to GitHub Container Registry
             echo "🔐 Logging in to registry..."
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
             
             # Set environment to production
             export ENVIRONMENT=production
+            
+            # Stop all services first to avoid port conflicts
+            echo "🛑 Stopping existing services..."
+            docker-compose down || true
             
             # Pull latest images (use pre-built images from registry)
             echo "🐳 Pulling Docker images..."
@@ -182,7 +190,7 @@ jobs:
             
             # Restart services with zero-downtime
             echo "🚀 Restarting services..."
-            docker-compose up -d --no-deps api ui worker
+            docker-compose up -d
             
             # Clean up old images
             echo "🧹 Cleaning up..."
@@ -253,11 +261,17 @@ jobs:
             # Pull latest code
             git pull origin develop
             
+            # Copy production override file
+            cp docker-compose.override.prod.yml docker-compose.override.yml
+            
             # Login to GitHub Container Registry
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
             
             # Set environment to staging
             export ENVIRONMENT=staging
+            
+            # Stop all services first to avoid port conflicts
+            docker-compose down || true
             
             # Pull latest images (use pre-built images from registry)
             docker-compose pull api ui worker || true
