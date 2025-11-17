@@ -195,6 +195,16 @@ jobs:
             echo "🛑 Stopping existing services..."
             docker-compose down || true
             
+            # Ensure logs directory has correct permissions
+            echo "🔧 Setting up logs directory..."
+            if [ -d "logs" ] && [ ! -w "logs" ]; then
+              echo "⚠️  WARNING: logs directory exists but is not writable"
+              echo "Run on server: sudo chown -R \$(whoami):\$(whoami) \${DEPLOY_PATH}/logs"
+              echo "Attempting to continue anyway..."
+            fi
+            mkdir -p logs/nodes 2>/dev/null || true
+            chmod -R 777 logs 2>/dev/null || true
+            
             # Pull latest images (use pre-built images from registry)
             echo "🐳 Pulling Docker images..."
             docker-compose pull api ui worker || true
