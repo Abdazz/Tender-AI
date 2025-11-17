@@ -199,12 +199,8 @@ jobs:
             echo "🐳 Pulling Docker images..."
             docker-compose pull api ui worker || true
             
-            # Create logs directory with proper permissions if it doesn't exist
-            echo "📁 Setting up logs directory..."
-            sudo mkdir -p logs/nodes
-            sudo chmod -R 777 logs
-            
             # Start services (this will also create the network and start dependencies)
+            # Docker will create logs directory with proper permissions
             echo "🚀 Starting services..."
             docker-compose up -d
             
