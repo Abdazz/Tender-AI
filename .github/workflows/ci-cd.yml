@@ -178,23 +178,23 @@ jobs:
             
             # Stop all services first to avoid port conflicts
             echo "🛑 Stopping existing services..."
-            docker-compose down || true
+            docker-compose -f docker-compose.yml -f docker-compose.override.yml down || true
             
             # Pull latest images (use pre-built images from registry)
             echo "🐳 Pulling Docker images..."
-            docker-compose pull api ui worker || true
+            docker-compose -f docker-compose.yml -f docker-compose.override.yml pull api ui worker || true
             
             # Start services (this will also create the network and start dependencies)
-            echo "� Starting services..."
-            docker-compose up -d
+            echo "🚀 Starting services..."
+            docker-compose -f docker-compose.yml -f docker-compose.override.yml up -d
             
             # Wait for database to be ready
             echo "⏳ Waiting for database..."
             sleep 10
             
             # Run database migrations
-            echo "�️ Running database migrations..."
-            docker-compose exec -T api alembic upgrade head
+            echo "🗄️ Running database migrations..."
+            docker-compose -f docker-compose.yml -f docker-compose.override.yml exec -T api alembic upgrade head
             
             # Clean up old images
             echo "🧹 Cleaning up..."
@@ -275,19 +275,19 @@ jobs:
             export ENVIRONMENT=staging
             
             # Stop all services first to avoid port conflicts
-            docker-compose down || true
+            docker-compose -f docker-compose.yml -f docker-compose.override.yml down || true
             
             # Pull latest images (use pre-built images from registry)
-            docker-compose pull api ui worker || true
+            docker-compose -f docker-compose.yml -f docker-compose.override.yml pull api ui worker || true
             
             # Start services
-            docker-compose up -d
+            docker-compose -f docker-compose.yml -f docker-compose.override.yml up -d
             
             # Wait for database to be ready
             sleep 10
             
             # Run database migrations
-            docker-compose exec -T api alembic upgrade head
+            docker-compose -f docker-compose.yml -f docker-compose.override.yml exec -T api alembic upgrade head
             
             # Clean up old images
             docker image prune -f
