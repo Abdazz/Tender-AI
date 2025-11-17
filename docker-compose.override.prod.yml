@@ -1,0 +1,80 @@
+# Production override for docker-compose.yml
+# This file overrides the default docker-compose.yml to use pre-built images from GitHub Container Registry
+# 
+# Usage:
+#   cp docker-compose.override.prod.yml docker-compose.override.yml
+#   docker-compose up -d
+#
+# The override file is automatically loaded by docker-compose
+
+version: '3.8'
+
+services:
+  api:
+    image: ghcr.io/abdazz/tenderai-bf-api:latest
+    build:
+      # Don't rebuild in production, use pre-built image
+      context: .
+      dockerfile: infra/Dockerfile.api
+    environment:
+      - ENVIRONMENT=production
+    # Remove volume mounts for source code in production (use code from image)
+    volumes:
+      - ./settings.yaml:/app/settings.yaml:ro
+      - ./logs:/app/logs
+      - api-cache:/app/cache
+      - ./alembic:/app/alembic
+    # Use production command (no --reload)
+    command: ["uvicorn", "tenderai_bf.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+        reservations:
+          cpus: '1'
+          memory: 2G
+
+  ui:
+    image: ghcr.io/abdazz/tenderai-bf-ui:latest
+    build:
+      # Don't rebuild in production, use pre-built image
+      context: .
+      dockerfile: infra/Dockerfile.ui
+    environment:
+      - ENVIRONMENT=production
+    # Remove volume mounts for source code in production
+    volumes:
+      - ./settings.yaml:/app/settings.yaml:ro
+      - ./logs:/app/logs
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 1G
+
+  worker:
+    image: ghcr.io/abdazz/tenderai-bf-worker:latest
+    build:
+      # Don't rebuild in production, use pre-built image
+      context: .
+      dockerfile: infra/Dockerfile.worker
+    environment:
+      - ENVIRONMENT=production
+    # Remove volume mounts for source code in production
+    volumes:
+      - ./settings.yaml:/app/settings.yaml:ro
+      - ./logs:/app/logs
+      - worker-cache:/app/cache
+      - worker-temp:/tmp/ocr
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+        reservations:
+          cpus: '1'
+          memory: 2G

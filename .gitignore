@@ -188,6 +188,7 @@ tmp/
 
 # Docker
 .dockerignore
+docker-compose.override.yml
 
 # MinIO data
 minio-data/

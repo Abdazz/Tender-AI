@@ -200,3 +200,28 @@ prod-check: ## Check production readiness
 	@grep -q "DEBUG=false" .env || (echo "WARNING: DEBUG should be false in production" && exit 1)
 	@grep -q "ENVIRONMENT=production" .env || (echo "WARNING: ENVIRONMENT should be production" && exit 1)
 	@echo "Production checks passed"
+
+# Deployment commands (using scripts/deploy.sh)
+deploy: ## Deploy to production (main branch)
+	./scripts/deploy.sh main deploy
+
+deploy-staging: ## Deploy to staging (develop branch)
+	./scripts/deploy.sh develop deploy
+
+deploy-status: ## Show deployment status
+	./scripts/deploy.sh main status
+
+deploy-logs: ## Show deployment logs (default: api)
+	./scripts/deploy.sh main logs api
+
+deploy-backup: ## Create database backup
+	./scripts/deploy.sh main backup
+
+deploy-rollback: ## Rollback to previous version
+	./scripts/deploy.sh main rollback
+
+prod-setup: ## Setup production environment (copy override file)
+	cp docker-compose.override.prod.yml docker-compose.override.yml
+	@echo "Production override configured!"
+	@echo "Images will be pulled from GitHub Container Registry"
+	@echo "Edit .env and set ENVIRONMENT=production"

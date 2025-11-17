@@ -1,0 +1,152 @@
+┌────────────────────────────────────────────────────────────────────┐
+│                    🚀 DÉPLOIEMENT RAPIDE                           │
+└────────────────────────────────────────────────────────────────────┘
+
+═══════════════════════════════════════════════════════════════════════
+                         DÉVELOPPEMENT LOCAL
+═══════════════════════════════════════════════════════════════════════
+
+1. Copier la configuration:
+   $ cp .env.example .env
+
+2. Démarrer les services:
+   $ docker-compose up -d
+   
+   OU utiliser le Makefile:
+   $ make setup    # Installation complète
+   $ make up       # Démarrer les services
+
+3. Accéder:
+   - API: http://localhost:8000
+   - Docs: http://localhost:8000/docs
+   - UI: http://localhost:7860
+
+═══════════════════════════════════════════════════════════════════════
+                     DÉPLOIEMENT PRODUCTION
+═══════════════════════════════════════════════════════════════════════
+
+┌─────────────────────────────────────────────────────────────────────┐
+│  OPTION 1: DÉPLOIEMENT AUTOMATIQUE (CI/CD)                         │
+└─────────────────────────────────────────────────────────────────────┘
+
+1. Configurer GitHub Secrets:
+   Settings > Secrets and variables > Actions
+   
+   Requis:
+   - SSH_PRIVATE_KEY
+   - PRODUCTION_HOST
+   - PRODUCTION_USER
+
+2. Push sur main:
+   $ git push origin main
+   
+   → GitHub Actions déploie automatiquement ! ✨
+
+┌─────────────────────────────────────────────────────────────────────┐
+│  OPTION 2: DÉPLOIEMENT MANUEL (Script)                             │
+└─────────────────────────────────────────────────────────────────────┘
+
+Sur le serveur:
+
+1. Installation initiale:
+   $ ./scripts/deploy.sh main deploy
+
+2. Mise à jour:
+   $ ./scripts/deploy.sh main deploy
+
+3. Autres commandes:
+   $ ./scripts/deploy.sh main status     # Statut
+   $ ./scripts/deploy.sh main logs api   # Logs
+   $ ./scripts/deploy.sh main backup     # Backup
+   $ ./scripts/deploy.sh main rollback   # Rollback
+
+┌─────────────────────────────────────────────────────────────────────┐
+│  OPTION 3: DÉPLOIEMENT MANUEL (Docker Compose)                     │
+└─────────────────────────────────────────────────────────────────────┘
+
+1. Cloner le repo:
+   $ git clone https://github.com/Abdazz/Tender-AI.git /opt/tenderai-bf
+   $ cd /opt/tenderai-bf
+
+2. Configurer:
+   $ cp .env.example .env
+   $ nano .env  # Éditer la config
+   $ cp docker-compose.override.prod.yml docker-compose.override.yml
+
+3. Déployer:
+   $ docker-compose pull    # Pull des images du registry
+   $ docker-compose up -d   # Démarrer
+   $ docker-compose exec api alembic upgrade head  # Migrations
+
+═══════════════════════════════════════════════════════════════════════
+                         COMMANDES UTILES
+═══════════════════════════════════════════════════════════════════════
+
+DÉVELOPPEMENT:
+  make dev              Tests + lint + format
+  make test             Tests unitaires
+  make logs-api         Logs API
+  make migrate          Migrations DB
+
+PRODUCTION:
+  make deploy           Déployer en production
+  make deploy-status    Statut du déploiement
+  make deploy-logs      Voir les logs
+  make deploy-backup    Backup de la DB
+  make prod-setup       Setup config production
+
+DOCKER:
+  docker-compose ps               Statut des services
+  docker-compose logs -f api      Logs en temps réel
+  docker-compose restart api      Redémarrer un service
+  docker-compose exec api bash    Shell dans le conteneur
+
+═══════════════════════════════════════════════════════════════════════
+                        FICHIERS IMPORTANTS
+═══════════════════════════════════════════════════════════════════════
+
+📁 Configuration:
+  .env.example                         Template de configuration
+  docker-compose.yml                   Config Docker (tous environnements)
+  docker-compose.override.prod.yml     Override pour production
+  settings.yaml                        Sources et configuration
+
+📁 CI/CD:
+  .github/workflows/ci-cd.yml          Pipeline GitHub Actions
+  scripts/deploy.sh                    Script de déploiement
+
+📁 Documentation:
+  README.md                            Documentation principale
+  DEPLOYMENT.md                        Guide de déploiement
+  CI-CD-SUMMARY.md                     Résumé CI/CD
+  .github/workflows/README.md          Doc CI/CD détaillée
+
+═══════════════════════════════════════════════════════════════════════
+                          WORKFLOW GIT
+═══════════════════════════════════════════════════════════════════════
+
+main       → Production (déploiement auto)
+develop    → Staging (déploiement auto)
+feature/*  → Branches de développement
+
+Push sur main = déploiement en production ! 🚀
+
+═══════════════════════════════════════════════════════════════════════
+                      POINTS IMPORTANTS
+═══════════════════════════════════════════════════════════════════════
+
+✅ UN SEUL docker-compose.yml pour tous les environnements
+✅ UN SEUL .env.example pour tous les environnements
+✅ docker-compose.override.yml différencie dev/prod
+✅ Images Docker publiées sur GitHub Container Registry
+✅ Déploiement automatique avec GitHub Actions
+✅ Script deploy.sh pour déploiement manuel facile
+
+═══════════════════════════════════════════════════════════════════════
+
+📚 Pour plus de détails, consultez:
+   - DEPLOYMENT.md (déploiement détaillé)
+   - CI-CD-SUMMARY.md (résumé CI/CD)
+   - .github/workflows/README.md (doc CI/CD complète)
+
+🆘 Support: https://github.com/Abdazz/Tender-AI/issues
