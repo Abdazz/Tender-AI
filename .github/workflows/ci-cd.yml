@@ -201,8 +201,8 @@ jobs:
             
             # Create logs directory with proper permissions if it doesn't exist
             echo "📁 Setting up logs directory..."
-            mkdir -p logs logs/nodes
-            chmod -R 777 logs
+            sudo mkdir -p logs/nodes
+            sudo chmod -R 777 logs
             
             # Start services (this will also create the network and start dependencies)
             echo "🚀 Starting services..."
