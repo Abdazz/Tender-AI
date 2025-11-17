@@ -247,8 +247,10 @@ jobs:
 
       - name: Health check
         run: |
-          sleep 30
-          curl -f https://tender-ai.yulcom.net/health || exit 1
+          sleep 10
+          # Check container health instead of external URL (Nginx may not be configured yet)
+          ssh -p ${{ secrets.PRODUCTION_SSH_PORT || 22 }} ${{ secrets.PRODUCTION_USER }}@${{ secrets.PRODUCTION_HOST }} \
+            "cd ${{ secrets.PRODUCTION_DEPLOY_PATH || '/opt/tenderai-bf' }} && docker-compose exec -T api curl -f http://localhost:8000/health || exit 1"
 
       - name: Notify deployment success
         if: success()
