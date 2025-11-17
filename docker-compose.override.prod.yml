@@ -10,6 +10,10 @@
 version: '3.8'
 
 services:
+  # PostgreSQL - don't expose port on host in production (only internal access)
+  postgres:
+    ports: []  # Remove port exposure to avoid conflicts with host PostgreSQL
+
   api:
     image: ghcr.io/abdazz/tenderai-bf-api:latest
     build:
