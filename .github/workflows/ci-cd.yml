@@ -165,6 +165,11 @@ jobs:
             echo "📥 Pulling latest code..."
             git pull origin main
             
+            # Debug: Verify alembic.ini has correct format
+            echo "🔍 DEBUG: Checking alembic.ini..."
+            grep "version_num_format" alembic.ini || echo "version_num_format not found"
+            grep "format.*levelname" alembic.ini || echo "format line not found"
+            
             # Setup production environment - comment out port mappings in .env
             echo "📝 Configuring production environment..."
             # Copy production override (no port exposures)
