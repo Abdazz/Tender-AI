@@ -167,11 +167,16 @@ jobs:
             
             # Setup production environment - comment out port mappings in .env
             echo "📝 Configuring production environment..."
+            # Copy production override (no port exposures)
+            cp docker-compose.override.prod.yml docker-compose.override.yml
+            
             if [ -f ".env" ]; then
               # Comment out port mappings to prevent exposure
               sed -i 's/^POSTGRES_PORT=/#POSTGRES_PORT=/' .env
               sed -i 's/^MINIO_PORT=/#MINIO_PORT=/' .env  
               sed -i 's/^MINIO_CONSOLE_PORT=/#MINIO_CONSOLE_PORT=/' .env
+              sed -i 's/^API_PORT=/#API_PORT=/' .env
+              sed -i 's/^UI_PORT=/#UI_PORT=/' .env
               # Fix cron expressions
               sed -i 's/^CRON_SCHEDULE=\([^"]\)/CRON_SCHEDULE="\1/' .env
               sed -i 's/^\(CRON_SCHEDULE="[^"]*\)$/\1"/' .env
@@ -275,8 +280,17 @@ jobs:
             # Pull latest code
             git pull origin develop
             
-            # Copy production override file
+            # Copy production override file (no port exposures)
             cp docker-compose.override.prod.yml docker-compose.override.yml
+            
+            # Setup staging environment
+            if [ -f ".env" ]; then
+              sed -i 's/^POSTGRES_PORT=/#POSTGRES_PORT=/' .env
+              sed -i 's/^MINIO_PORT=/#MINIO_PORT=/' .env  
+              sed -i 's/^MINIO_CONSOLE_PORT=/#MINIO_CONSOLE_PORT=/' .env
+              sed -i 's/^API_PORT=/#API_PORT=/' .env
+              sed -i 's/^UI_PORT=/#UI_PORT=/' .env
+            fi
             
             # Login to GitHub Container Registry
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin

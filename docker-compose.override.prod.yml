@@ -1,24 +1,22 @@
 # Production override for docker-compose.yml
-# This file overrides the default docker-compose.yml to use pre-built images from GitHub Container Registry
+# This file configures services for production deployment
 # 
-# Usage:
-#   cp docker-compose.override.prod.yml docker-compose.override.yml
-#   docker-compose up -d
+# In production:
+# - Ports are NOT exposed (Nginx reverse proxy handles external access)
+# - Pre-built images from GitHub Container Registry are used
+# - Resource limits are enforced
 #
-# The override file is automatically loaded by docker-compose
+# This file is copied as docker-compose.override.yml during CI/CD deployment
 
 version: '3.8'
 
 services:
-  # PostgreSQL - don't expose port on host in production (only internal access)
-  postgres:
-    # Override to remove ports - empty array should work but we'll be explicit
-    ports: !reset []
-
-  # MinIO - don't expose ports on host in production (only internal access)  
-  minio:
-    # Override to remove ports
-    ports: !reset []
+  # No port exposures needed - all ports are commented in base docker-compose.yml
+  # Nginx reverse proxy will forward to:
+  # - api:8000 (internal)
+  # - ui:7860 (internal)
+  # - postgres:5432 (internal only)
+  # - minio:9000 (internal only)
 
   api:
     image: ghcr.io/abdazz/tenderai-bf-api:latest
