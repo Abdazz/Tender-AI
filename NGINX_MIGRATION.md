@@ -10,7 +10,7 @@ L'application TenderAI BF utilise une architecture à deux niveaux de reverse pr
 Internet (HTTPS 443)
     ↓
 Apache2 (host) - Gère SSL et toutes les applications
-    ↓ proxy → localhost:18080
+    ↓ proxy → localhost:18443
 Nginx Docker - Reverse proxy pour TenderAI uniquement  
     ↓
 API, UI, Worker containers
@@ -18,7 +18,7 @@ API, UI, Worker containers
 
 ## Pourquoi cette architecture ?
 
-✅ **Pas de conflit de ports** : Apache2 reste sur 443, Nginx Docker sur 18080 (localhost)  
+✅ **Pas de conflit de ports** : Apache2 reste sur 443, Nginx Docker sur 18443 (localhost)  
 ✅ **Autres applications préservées** : Apache2 gère tous les sites  
 ✅ **SSL centralisé** : Un seul point de gestion SSL (Apache2)  
 ✅ **Isolation** : Nginx Docker optimisé uniquement pour TenderAI  
@@ -31,7 +31,7 @@ API, UI, Worker containers
 - Ports potentiellement exposés publiquement
 
 ### Après
-- Apache2 (443) → Nginx Docker (18080) → Containers
+- Apache2 (443) → Nginx Docker (18443) → Containers
 - Tous les ports Docker internes seulement
 - Configuration Nginx versionnée dans le repo
 
@@ -117,7 +117,7 @@ sudo systemctl start nginx
 | Service | Port Host | Port Container | Accès |
 |---------|-----------|----------------|-------|
 | Apache2 | 80, 443 | - | Public (toutes apps) |
-| Nginx Docker | 18080 (localhost) | 80 | Interne seulement |
+| Nginx Docker | 18443 (localhost) | 443 | Interne seulement |
 | Nginx Docker | 18443 (localhost) | 443 | Interne seulement |
 | API | - | 8000 | Interne Docker |
 | UI | - | 7860 | Interne Docker |
@@ -139,13 +139,13 @@ Configuration du VirtualHost dans `/etc/apache2/sites-available/tender-ai.yulcom
     SSLCertificateKeyFile /etc/letsencrypt/live/tender-ai.yulcom.net/privkey.pem
     
     # Proxy vers Nginx Docker
-    ProxyPass / http://127.0.0.1:18080/
-    ProxyPassReverse / http://127.0.0.1:18080/
+    ProxyPass / https://127.0.0.1:18443/
+    ProxyPassReverse / https://127.0.0.1:18443/
     
     # WebSocket support
     RewriteEngine On
     RewriteCond %{HTTP:Upgrade} =websocket [NC]
-    RewriteRule /(.*)  ws://127.0.0.1:18080/$1 [P,L]
+    RewriteRule /(.*)  wss://127.0.0.1:18443/$1 [P,L]
 </VirtualHost>
 ```
 

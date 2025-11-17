@@ -3,11 +3,11 @@
 ## Architecture
 
 ```
-Internet (443) → Apache2 (host) → Nginx Docker (18080) → API/UI containers
+Internet (443) → Apache2 (host) → Nginx Docker (18443) → API/UI containers
 ```
 
 - **Apache2** : Gère SSL/TLS et les autres applications sur le serveur (port 443)
-- **Nginx Docker** : Reverse proxy interne pour TenderAI (port 18080, localhost only)
+- **Nginx Docker** : Reverse proxy interne pour TenderAI (port 18443, localhost only)
 - **API/UI** : Services backend (ports internes Docker seulement)
 
 ## Installation
@@ -51,13 +51,13 @@ Remplacez la section `<VirtualHost *:443>` pour ajouter le proxy au lieu de `Doc
     # AJOUTER ces lignes :
     ProxyPreserveHost On
     ProxyRequests Off
-    ProxyPass / http://127.0.0.1:18080/
-    ProxyPassReverse / http://127.0.0.1:18080/
+    ProxyPass / https://127.0.0.1:18443/
+    ProxyPassReverse / https://127.0.0.1:18443/
     
     # WebSocket support
     RewriteEngine On
     RewriteCond %{HTTP:Upgrade} =websocket [NC]
-    RewriteRule /(.*)  ws://127.0.0.1:18080/$1 [P,L]
+    RewriteRule /(.*)  wss://127.0.0.1:18443/$1 [P,L]
     
     ErrorLog ${APACHE_LOG_DIR}/tender-ai.yulcom.net-ssl-error.log
     CustomLog ${APACHE_LOG_DIR}/tender-ai.yulcom.net-ssl-access.log combined
@@ -105,7 +105,7 @@ curl -I https://tender-ai.yulcom.net/health
 | Service | Port Host | Port Container | Accès |
 |---------|-----------|----------------|-------|
 | Apache2 | 80, 443 | - | Public (HTTPS) |
-| Nginx Docker | 18080 (localhost) | 80 | Interne seulement |
+| Nginx Docker | 18443 (localhost) | 443 | Interne seulement |
 | Nginx Docker | 18443 (localhost) | 443 | Interne seulement |
 | API | - | 8000 | Interne Docker |
 | UI | - | 7860 | Interne Docker |
@@ -116,8 +116,8 @@ curl -I https://tender-ai.yulcom.net/health
 
 1. **Client** → `https://tender-ai.yulcom.net/api/health`
 2. **Apache2** (port 443) reçoit la requête SSL
-3. **Apache2** proxy vers `http://localhost:18080/api/health`
-4. **Nginx Docker** (port 18080) reçoit la requête
+3. **Apache2** proxy vers `https://localhost:18443/api/health`
+4. **Nginx Docker** (port 18443) reçoit la requête
 5. **Nginx Docker** proxy vers `http://api:8000/health`
 6. **API container** traite et répond
 
@@ -161,8 +161,8 @@ docker-compose ps nginx
 # Vérifier les logs Nginx Docker
 docker-compose logs nginx
 
-# Vérifier que le port 18080 est accessible
-curl -I http://localhost:18080/health
+# Vérifier que le port 18443 est accessible
+curl -I https://localhost:18443/health
 ```
 
 ### 503 Service Unavailable
@@ -281,7 +281,7 @@ docker-compose ps
 
 ```bash
 # Depuis le serveur
-curl -I http://localhost:18080/health    # Nginx Docker
+curl -I https://localhost:18443/health    # Nginx Docker
 curl -I https://localhost/health         # Apache2 (si configuré)
 
 # Depuis l'extérieur
