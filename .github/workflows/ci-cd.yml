@@ -165,22 +165,19 @@ jobs:
             echo "📥 Pulling latest code..."
             git pull origin main
             
-            # Remove old override file and copy fresh production override
+            # Setup production environment - comment out port mappings in .env
             echo "📝 Configuring production environment..."
-            rm -f docker-compose.override.yml
-            cp docker-compose.override.prod.yml docker-compose.override.yml
-            
-            # Debug: Verify override file content
-            echo "🔍 DEBUG: Checking override file..."
-            ls -la docker-compose.override.yml
-            echo "--- Content of docker-compose.override.yml ---"
-            cat docker-compose.override.yml
-            echo "--- End of override file ---"
-            
-            # Debug: Check what docker-compose will use
-            echo "🔍 DEBUG: Docker Compose config (merged)..."
-            docker-compose -f docker-compose.yml -f docker-compose.override.yml config | grep -A 3 "postgres:" || true
-            docker-compose -f docker-compose.yml -f docker-compose.override.yml config | grep -A 3 "minio:" || true
+            if [ -f ".env" ]; then
+              # Comment out port mappings to prevent exposure
+              sed -i 's/^POSTGRES_PORT=/#POSTGRES_PORT=/' .env
+              sed -i 's/^MINIO_PORT=/#MINIO_PORT=/' .env  
+              sed -i 's/^MINIO_CONSOLE_PORT=/#MINIO_CONSOLE_PORT=/' .env
+              # Fix cron expressions
+              sed -i 's/^CRON_SCHEDULE=\([^"]\)/CRON_SCHEDULE="\1/' .env
+              sed -i 's/^\(CRON_SCHEDULE="[^"]*\)$/\1"/' .env
+              sed -i 's/^BACKUP_SCHEDULE=\([^"]\)/BACKUP_SCHEDULE="\1/' .env
+              sed -i 's/^\(BACKUP_SCHEDULE="[^"]*\)$/\1"/' .env
+            fi
             
             # Login to GitHub Container Registry
             echo "🔐 Logging in to registry..."
@@ -191,15 +188,15 @@ jobs:
             
             # Stop all services first to avoid port conflicts
             echo "🛑 Stopping existing services..."
-            docker-compose -f docker-compose.yml -f docker-compose.override.yml down || true
+            docker-compose down || true
             
             # Pull latest images (use pre-built images from registry)
             echo "🐳 Pulling Docker images..."
-            docker-compose -f docker-compose.yml -f docker-compose.override.yml pull api ui worker || true
+            docker-compose pull api ui worker || true
             
             # Start services (this will also create the network and start dependencies)
             echo "🚀 Starting services..."
-            docker-compose -f docker-compose.yml -f docker-compose.override.yml up -d
+            docker-compose up -d
             
             # Wait for database to be ready
             echo "⏳ Waiting for database..."
@@ -207,7 +204,7 @@ jobs:
             
             # Run database migrations
             echo "🗄️ Running database migrations..."
-            docker-compose -f docker-compose.yml -f docker-compose.override.yml exec -T api alembic upgrade head
+            docker-compose exec -T api alembic upgrade head
             
             # Clean up old images
             echo "🧹 Cleaning up..."
@@ -288,19 +285,19 @@ jobs:
             export ENVIRONMENT=staging
             
             # Stop all services first to avoid port conflicts
-            docker-compose -f docker-compose.yml -f docker-compose.override.yml down || true
+            docker-compose down || true
             
             # Pull latest images (use pre-built images from registry)
-            docker-compose -f docker-compose.yml -f docker-compose.override.yml pull api ui worker || true
+            docker-compose pull api ui worker || true
             
             # Start services
-            docker-compose -f docker-compose.yml -f docker-compose.override.yml up -d
+            docker-compose up -d
             
             # Wait for database to be ready
             sleep 10
             
             # Run database migrations
-            docker-compose -f docker-compose.yml -f docker-compose.override.yml exec -T api alembic upgrade head
+            docker-compose exec -T api alembic upgrade head
             
             # Clean up old images
             docker image prune -f
