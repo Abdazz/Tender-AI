@@ -205,11 +205,19 @@ jobs:
             
             # Wait for database to be ready
             echo "⏳ Waiting for database..."
-            sleep 10
+            sleep 20
+            
+            # Check if API is healthy
+            echo "🔍 Checking API health..."
+            docker-compose ps api
             
             # Run database migrations
             echo "🗄️ Running database migrations..."
-            docker-compose exec -T api alembic upgrade head
+            docker-compose exec -T api bash -c "alembic upgrade head" || {
+              echo "❌ Migration failed, checking logs..."
+              docker-compose logs --tail=50 api
+              exit 1
+            }
             
             # Clean up old images
             echo "🧹 Cleaning up..."
@@ -308,10 +316,14 @@ jobs:
             docker-compose up -d
             
             # Wait for database to be ready
-            sleep 10
+            sleep 20
             
             # Run database migrations
-            docker-compose exec -T api alembic upgrade head
+            docker-compose exec -T api bash -c "alembic upgrade head" || {
+              echo "Migration failed, checking logs..."
+              docker-compose logs --tail=50 api
+              exit 1
+            }
             
             # Clean up old images
             docker image prune -f
