@@ -143,7 +143,6 @@ jobs:
             # Debug: Check if directory exists
             if [ -d "\${DEPLOY_PATH}" ]; then
               echo "✅ Directory \${DEPLOY_PATH} exists"
-              ls -la "\${DEPLOY_PATH}"
             else
               echo "❌ Directory \${DEPLOY_PATH} does NOT exist"
               exit 1
