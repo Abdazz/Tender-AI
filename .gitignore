@@ -214,3 +214,5 @@ models/
 # Temporary OCR files
 ocr-temp/
 *.pdf.tmp
+
+generated_docs/ 
