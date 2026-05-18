@@ -134,6 +134,8 @@ jobs:
           USER: ${{ secrets.PRODUCTION_USER }}
           PORT: ${{ secrets.PRODUCTION_SSH_PORT || 22 }}
           DEPLOY_PATH: ${{ secrets.PRODUCTION_DEPLOY_PATH || '/opt/tenderai-bf' }}
+          TENDERAI_JWT_SECRET: ${{ secrets.TENDERAI_JWT_SECRET }}
+          TENDERAI_ADMIN_PASSWORD: ${{ secrets.TENDERAI_ADMIN_PASSWORD }}
         run: |
           ssh -p ${PORT} ${USER}@${HOST} "bash -s" << ENDSSH
             set -e
@@ -183,7 +185,7 @@ jobs:
             if [ -f ".env" ]; then
               # Comment out port mappings to prevent exposure
               sed -i 's/^POSTGRES_PORT=/#POSTGRES_PORT=/' .env
-              sed -i 's/^MINIO_PORT=/#MINIO_PORT=/' .env  
+              sed -i 's/^MINIO_PORT=/#MINIO_PORT=/' .env
               sed -i 's/^MINIO_CONSOLE_PORT=/#MINIO_CONSOLE_PORT=/' .env
               sed -i 's/^API_PORT=/#API_PORT=/' .env
               sed -i 's/^UI_PORT=/#UI_PORT=/' .env
@@ -192,6 +194,9 @@ jobs:
               sed -i 's/^\(CRON_SCHEDULE="[^"]*\)$/\1"/' .env
               sed -i 's/^BACKUP_SCHEDULE=\([^"]\)/BACKUP_SCHEDULE="\1/' .env
               sed -i 's/^\(BACKUP_SCHEDULE="[^"]*\)$/\1"/' .env
+              # Inject security credentials from GitHub Secrets
+              sed -i "s|^TENDERAI_JWT_SECRET=.*|TENDERAI_JWT_SECRET=${TENDERAI_JWT_SECRET}|" .env
+              sed -i "s|^TENDERAI_ADMIN_PASSWORD=.*|TENDERAI_ADMIN_PASSWORD=${TENDERAI_ADMIN_PASSWORD}|" .env
             fi
             
             # Login to GitHub Container Registry
@@ -303,6 +308,8 @@ jobs:
           USER: ${{ secrets.STAGING_USER }}
           PORT: ${{ secrets.STAGING_SSH_PORT || 22 }}
           DEPLOY_PATH: ${{ secrets.STAGING_DEPLOY_PATH || '/opt/tenderai-bf-staging' }}
+          TENDERAI_JWT_SECRET: ${{ secrets.TENDERAI_JWT_SECRET }}
+          TENDERAI_ADMIN_PASSWORD: ${{ secrets.TENDERAI_ADMIN_PASSWORD }}
         run: |
           ssh -p ${PORT} ${USER}@${HOST} "bash -s" << ENDSSH
             set -e
@@ -320,10 +327,13 @@ jobs:
             # Setup staging environment
             if [ -f ".env" ]; then
               sed -i 's/^POSTGRES_PORT=/#POSTGRES_PORT=/' .env
-              sed -i 's/^MINIO_PORT=/#MINIO_PORT=/' .env  
+              sed -i 's/^MINIO_PORT=/#MINIO_PORT=/' .env
               sed -i 's/^MINIO_CONSOLE_PORT=/#MINIO_CONSOLE_PORT=/' .env
               sed -i 's/^API_PORT=/#API_PORT=/' .env
               sed -i 's/^UI_PORT=/#UI_PORT=/' .env
+              # Inject security credentials from GitHub Secrets
+              sed -i "s|^TENDERAI_JWT_SECRET=.*|TENDERAI_JWT_SECRET=${TENDERAI_JWT_SECRET}|" .env
+              sed -i "s|^TENDERAI_ADMIN_PASSWORD=.*|TENDERAI_ADMIN_PASSWORD=${TENDERAI_ADMIN_PASSWORD}|" .env
             fi
             
             # Login to GitHub Container Registry
