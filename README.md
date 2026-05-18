@@ -43,6 +43,9 @@ docker-compose up -d
 # View logs
 docker-compose logs -f
 
+# Trigger the pipeline manually
+docker-compose exec api python -m tenderai_bf.cli run-once
+
 # Access services:
 # - FastAPI: http://localhost:8000
 # - FastAPI Docs: http://localhost:8000/docs
@@ -96,6 +99,8 @@ poetry run tenderai run-once
 | `GROQ_API_KEY` | Groq LLM API key | `` |
 | `OPENAI_API_KEY` | OpenAI API key (alternative) | `` |
 | `LOG_LEVEL` | Logging level | `INFO` |
+| `TENDERAI_JWT_SECRET` | Secret key for JWT auth — **required**, min 32 chars | `` |
+| `TENDERAI_ADMIN_PASSWORD` | Admin UI password — **required**, min 8 chars | `` |
 
 ### Settings Configuration
 
@@ -189,7 +194,8 @@ make migrate           # Apply migrations
 make revision          # Create new migration
 
 # Pipeline Operations
-make run-once          # Execute pipeline once
+make run-once          # Execute pipeline once (local)
+make run-once-docker   # Execute pipeline once (inside API container)
 make build-report      # Generate report only
 make test-email        # Test email configuration
 ```
