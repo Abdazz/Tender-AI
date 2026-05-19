@@ -93,6 +93,7 @@ services:
       # Don't rebuild in production, use pre-built image
       context: .
       dockerfile: infra/Dockerfile.worker
+    command: ["python", "-m", "tenderai_bf.cli", "run-scheduler"]
     environment:
       - ENVIRONMENT=production
     # Remove volume mounts for source code in production
@@ -101,6 +102,7 @@ services:
       - ./logs:/app/logs
       - worker-cache:/app/cache
       - worker-temp:/tmp/ocr
+      - chroma-data:/app/data/chroma_db
     deploy:
       resources:
         limits:
