@@ -224,6 +224,19 @@ jobs:
             echo "🐳 Pulling Docker images..."
             docker-compose pull api frontend worker || true
             
+            # Verify the api image is available (abort if never built)
+            if ! docker image inspect ghcr.io/abdazz/tenderai-bf-api:latest > /dev/null 2>&1; then
+              echo "❌ API image not found locally or in registry."
+              echo "   Trigger a build first: push a commit with '[build]' in the message,"
+              echo "   push a 'v*' tag, or run the workflow manually with skip_build=false."
+              exit 1
+            fi
+            echo "✅ API image available: \$(docker image inspect ghcr.io/abdazz/tenderai-bf-api:latest --format '{{.Id}}' | cut -c1-19)"
+            if ! docker image inspect ghcr.io/abdazz/tenderai-bf-frontend:latest > /dev/null 2>&1; then
+              echo "❌ Frontend image not found. Run workflow manually with skip_build=false."
+              exit 1
+            fi
+            
             # Ensure logs directory exists (ignore if already exists or no permissions)
             echo "📁 Setting up logs directory..."
             mkdir -p logs/nodes 2>/dev/null || true
