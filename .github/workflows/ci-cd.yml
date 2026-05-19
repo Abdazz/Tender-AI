@@ -251,20 +251,26 @@ jobs:
             
             # Start all services
             echo "🚀 Starting application services..."
-            docker-compose up -d
+            docker-compose up -d --remove-orphans
+            
+            # Immediate status after start
+            echo "📊 Container status (t+0):"
+            docker-compose ps
+            echo "📋 API logs immediately after start:"
+            docker-compose logs --tail=30 api
             
             # Wait for API to be healthy before declaring success
             echo "⏳ Waiting for API to become healthy..."
             for i in 1 2 3 4 5 6; do
+              echo "  [attempt \$i] docker-compose ps:"
+              docker-compose ps api
               if docker-compose exec -T api curl -sf http://localhost:8000/health > /dev/null 2>&1; then
-                echo "✅ API is healthy"
+                echo "✅ API is healthy on attempt \$i"
                 break
               fi
               if [ \$i -eq 6 ]; then
-                echo "❌ API did not become healthy — container status:"
-                docker-compose ps api
-                echo "--- API logs ---"
-                docker-compose logs --tail=50 api
+                echo "❌ API did not become healthy — full logs:"
+                docker-compose logs --tail=100 api
                 exit 1
               fi
               echo "  Attempt \$i: API not ready, waiting 10s..."
@@ -280,11 +286,9 @@ jobs:
 
       - name: Health check
         run: |
-          # API health already verified inside the deploy step.
-          # Do a final external check via Nginx.
           sleep 5
           ssh -p ${{ secrets.PRODUCTION_SSH_PORT || 22 }} ${{ secrets.PRODUCTION_USER }}@${{ secrets.PRODUCTION_HOST }} \
-            "cd ${{ secrets.PRODUCTION_DEPLOY_PATH || '/opt/tenderai-bf' }} && docker-compose exec -T api curl -sf http://localhost:8000/health || (docker-compose logs --tail=20 api && exit 1)"
+            "cd ${{ secrets.PRODUCTION_DEPLOY_PATH || '/opt/tenderai-bf' }} && echo '=== Final container status ===' && docker-compose ps && docker-compose exec -T api curl -sf http://localhost:8000/health && echo '✅ API OK' || (echo '❌ API down — last logs:' && docker-compose logs --tail=30 api && exit 1)"
 
       - name: Notify deployment success
         if: success()
