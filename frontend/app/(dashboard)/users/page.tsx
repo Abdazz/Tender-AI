@@ -22,7 +22,7 @@ export default function UsersPage() {
   async function loadUsers() {
     setLoading(true);
     try {
-      const res = await fetch("/api/v1/users", { credentials: "include" });
+      const res = await fetch("/api/proxy/users");
       if (res.ok) {
         const data = await res.json();
         setUsers(data.users);
@@ -37,10 +37,9 @@ export default function UsersPage() {
   }, []);
 
   async function toggleActive(user: User) {
-    await fetch(`/api/v1/users/${user.id}`, {
+    await fetch(`/api/proxy/users/${user.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      credentials: "include",
       body: JSON.stringify({ is_active: !user.is_active }),
     });
     loadUsers();
@@ -48,19 +47,13 @@ export default function UsersPage() {
 
   async function resetPassword(user: User) {
     if (!confirm(`Réinitialiser le mot de passe de ${user.username} ?`)) return;
-    await fetch(`/api/v1/users/${user.id}/reset-password`, {
-      method: "POST",
-      credentials: "include",
-    });
+    await fetch(`/api/proxy/users/${user.id}/reset-password`, { method: "POST" });
     alert("Nouveau mot de passe envoyé par email.");
   }
 
   async function deleteUser(user: User) {
     if (!confirm(`Supprimer l'utilisateur ${user.username} ?`)) return;
-    await fetch(`/api/v1/users/${user.id}`, {
-      method: "DELETE",
-      credentials: "include",
-    });
+    await fetch(`/api/proxy/users/${user.id}`, { method: "DELETE" });
     loadUsers();
   }
 

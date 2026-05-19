@@ -28,10 +28,9 @@ export default function ChangePasswordPage() {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch("/api/v1/admin/change-password", {
+      const res = await fetch("/api/auth/change-password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        credentials: "include",
         body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
       });
       if (!res.ok) {

@@ -31,10 +31,9 @@ export function CreateUserDialog({ onCreated }: Props) {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch("/api/v1/users", {
+      const res = await fetch("/api/proxy/users", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        credentials: "include",
         body: JSON.stringify({ username, email, role }),
       });
       if (!res.ok) {
