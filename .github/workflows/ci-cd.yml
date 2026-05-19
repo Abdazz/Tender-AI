@@ -54,7 +54,7 @@ jobs:
 
     strategy:
       matrix:
-        service: [api, ui, worker]
+        service: [api, frontend, worker]
 
     steps:
       - name: Checkout code
@@ -222,31 +222,36 @@ jobs:
             
             # Pull latest images (use pre-built images from registry)
             echo "🐳 Pulling Docker images..."
-            docker-compose pull api ui worker || true
+            docker-compose pull api frontend worker || true
             
             # Ensure logs directory exists (ignore if already exists or no permissions)
             echo "📁 Setting up logs directory..."
             mkdir -p logs/nodes 2>/dev/null || true
             
-            # Start services (this will also create the network and start dependencies)
-            echo "🚀 Starting services..."
-            docker-compose up -d
+            # Start dependencies first (PostgreSQL, MinIO)
+            echo "🗄️ Starting dependencies..."
+            docker-compose up -d postgres minio createbuckets
             
-            # Wait for database to be ready
-            echo "⏳ Waiting for database..."
-            sleep 10
+            # Wait for PostgreSQL to be ready
+            echo "⏳ Waiting for database to be ready..."
+            until docker-compose exec -T postgres pg_isready -U \${POSTGRES_USER:-tenderai} -d \${POSTGRES_DB:-tenderai_bf}; do
+              echo "  Waiting for postgres..."
+              sleep 3
+            done
+            echo "✅ Database is ready"
             
-            # Check if API is healthy
-            echo "🔍 Checking API health..."
-            docker-compose ps api
-            
-            # Run database migrations
-            echo "🗄️ Running database migrations..."
-            docker-compose exec -T api bash -c "alembic upgrade head" || {
-              echo "❌ Migration failed, checking logs..."
-              docker-compose logs --tail=50 api
+            # Run database migrations before starting application services
+            echo "🔄 Running database migrations..."
+            docker-compose run --rm api alembic upgrade head || {
+              echo "❌ Migration failed, checking postgres logs..."
+              docker-compose logs --tail=50 postgres
               exit 1
             }
+            echo "✅ Migrations applied"
+            
+            # Start all services
+            echo "🚀 Starting application services..."
+            docker-compose up -d
             
             # Clean up old images
             echo "🧹 Cleaning up..."
@@ -346,20 +351,25 @@ jobs:
             docker-compose down || true
             
             # Pull latest images (use pre-built images from registry)
-            docker-compose pull api ui worker || true
+            docker-compose pull api frontend worker || true
             
-            # Start services
-            docker-compose up -d
+            # Start dependencies first (PostgreSQL, MinIO)
+            docker-compose up -d postgres minio createbuckets
             
-            # Wait for database to be ready
-            sleep 20
+            # Wait for PostgreSQL to be ready
+            until docker-compose exec -T postgres pg_isready -U \${POSTGRES_USER:-tenderai} -d \${POSTGRES_DB:-tenderai_bf}; do
+              sleep 3
+            done
             
-            # Run database migrations
-            docker-compose exec -T api bash -c "alembic upgrade head" || {
-              echo "Migration failed, checking logs..."
-              docker-compose logs --tail=50 api
+            # Run database migrations before starting application services
+            docker-compose run --rm api alembic upgrade head || {
+              echo "Migration failed, checking postgres logs..."
+              docker-compose logs --tail=50 postgres
               exit 1
             }
+            
+            # Start all services
+            docker-compose up -d
             
             # Clean up old images
             docker image prune -f
