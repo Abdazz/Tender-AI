@@ -282,6 +282,12 @@ jobs:
             }
             echo "✅ Migrations applied"
 
+            # Ensure the admin user exists (idempotent: skips if already present)
+            echo "👤 Ensuring admin user exists..."
+            docker compose run --no-deps --rm api tenderai create-admin </dev/null && \
+              echo "✅ Admin user ready" || \
+              echo "⚠️  create-admin exited non-zero (check TENDERAI_ADMIN_PASSWORD is set)"
+
             # Start only app services — postgres and minio are already running and healthy;
             # running "up -d --remove-orphans" over the whole project can recreate them
             # (config hash change) which resets their health state and blocks the api.
