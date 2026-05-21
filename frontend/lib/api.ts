@@ -42,6 +42,35 @@ export interface UserOut {
   password_reset_required: boolean;
 }
 
+export interface SourceOut {
+  id: number;
+  name: string;
+  base_url: string;
+  list_url: string;
+  parser_type: string;
+  rate_limit: string;
+  enabled: boolean;
+  patterns: Record<string, unknown> | null;
+  last_seen_at: string | null;
+  last_success_at: string | null;
+  last_error_at: string | null;
+  last_error_message: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SourceCreate {
+  name: string;
+  base_url: string;
+  list_url: string;
+  parser_type: string;
+  rate_limit?: string;
+  enabled?: boolean;
+  patterns?: Record<string, unknown> | null;
+}
+
+export type SourceUpdate = Partial<SourceCreate>;
+
 export interface RunItem {
   run_id: string;
   status: string;
@@ -96,5 +125,21 @@ export const api = {
     request<{ status: string; components: Record<string, { status: string }> }>("/health"),
 
   getSources: (token: string) =>
-    request<{ sources: unknown[] }>("/api/v1/sources?enabled_only=false", {}, token),
+    request<{ sources: SourceOut[]; total: number }>("/api/v1/sources?enabled_only=false", {}, token),
+
+  createSource: (token: string, data: SourceCreate) =>
+    request<SourceOut>("/api/v1/sources", { method: "POST", body: JSON.stringify(data) }, token),
+
+  updateSource: (token: string, id: number, data: SourceUpdate) =>
+    request<SourceOut>(`/api/v1/sources/${id}`, { method: "PUT", body: JSON.stringify(data) }, token),
+
+  deleteSource: (token: string, id: number) =>
+    request(`/api/v1/sources/${id}`, { method: "DELETE" }, token),
+
+  testSource: (token: string, id: number) =>
+    request<{ status: string; message: string; content_length: number }>(
+      `/api/v1/sources/${id}/test`,
+      { method: "POST" },
+      token
+    ),
 };
