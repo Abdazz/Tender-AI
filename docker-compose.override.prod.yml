@@ -29,7 +29,7 @@ services:
       - nginx-logs:/var/log/nginx
     depends_on:
       - api
-      - ui
+      - frontend
     restart: unless-stopped
     networks:
       - tenderai-network
@@ -66,26 +66,21 @@ services:
           cpus: '1'
           memory: 2G
 
-  ui:
-    image: ghcr.io/abdazz/tenderai-bf-ui:latest
+  frontend:
+    image: ghcr.io/abdazz/tenderai-bf-frontend:latest
     build:
-      # Don't rebuild in production, use pre-built image
       context: .
-      dockerfile: infra/Dockerfile.ui
+      dockerfile: infra/Dockerfile.frontend
     environment:
       - ENVIRONMENT=production
-    # Remove volume mounts for source code in production
-    volumes:
-      - ./settings.yaml:/app/settings.yaml:ro
-      - ./logs:/app/logs
     deploy:
       resources:
         limits:
           cpus: '1'
-          memory: 2G
+          memory: 512M
         reservations:
-          cpus: '0.5'
-          memory: 1G
+          cpus: '0.25'
+          memory: 256M
 
   worker:
     image: ghcr.io/abdazz/tenderai-bf-worker:latest
@@ -93,6 +88,7 @@ services:
       # Don't rebuild in production, use pre-built image
       context: .
       dockerfile: infra/Dockerfile.worker
+    command: ["python", "-m", "tenderai_bf.cli", "run-scheduler"]
     environment:
       - ENVIRONMENT=production
     # Remove volume mounts for source code in production
@@ -101,6 +97,7 @@ services:
       - ./logs:/app/logs
       - worker-cache:/app/cache
       - worker-temp:/tmp/ocr
+      - chroma-data:/app/data/chroma_db
     deploy:
       resources:
         limits:

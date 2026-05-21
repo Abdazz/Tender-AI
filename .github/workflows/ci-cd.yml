@@ -54,7 +54,7 @@ jobs:
 
     strategy:
       matrix:
-        service: [api, ui, worker]
+        service: [api, frontend, worker]
 
     steps:
       - name: Checkout code
@@ -206,9 +206,9 @@ jobs:
             # Set environment to production
             export ENVIRONMENT=production
             
-            # Stop all services first to avoid port conflicts
+            # Stop all services first (--remove-orphans stops renamed/deleted services like old tenderai-ui)
             echo "🛑 Stopping existing services..."
-            docker-compose down || true
+            docker compose down --remove-orphans || true
             
             # Ensure logs directory has correct permissions
             echo "🔧 Setting up logs directory..."
@@ -222,31 +222,97 @@ jobs:
             
             # Pull latest images (use pre-built images from registry)
             echo "🐳 Pulling Docker images..."
-            docker-compose pull api ui worker || true
+            docker compose pull api frontend worker || true
+            
+            # Verify the api image is available (abort if never built)
+            if ! docker image inspect ghcr.io/abdazz/tenderai-bf-api:latest > /dev/null 2>&1; then
+              echo "❌ API image not found locally or in registry."
+              echo "   Trigger a build first: push a commit with '[build]' in the message,"
+              echo "   push a 'v*' tag, or run the workflow manually with skip_build=false."
+              exit 1
+            fi
+            echo "✅ API image available: \$(docker image inspect ghcr.io/abdazz/tenderai-bf-api:latest --format '{{.Id}}' | cut -c1-19)"
+            if ! docker image inspect ghcr.io/abdazz/tenderai-bf-frontend:latest > /dev/null 2>&1; then
+              echo "❌ Frontend image not found. Run workflow manually with skip_build=false."
+              exit 1
+            fi
             
             # Ensure logs directory exists (ignore if already exists or no permissions)
             echo "📁 Setting up logs directory..."
             mkdir -p logs/nodes 2>/dev/null || true
             
-            # Start services (this will also create the network and start dependencies)
-            echo "🚀 Starting services..."
-            docker-compose up -d
+            # Start dependencies first (PostgreSQL, MinIO)
+            echo "🗄️ Starting dependencies..."
+            docker compose up -d postgres minio createbuckets
             
-            # Wait for database to be ready
-            echo "⏳ Waiting for database..."
-            sleep 10
-            
-            # Check if API is healthy
-            echo "🔍 Checking API health..."
-            docker-compose ps api
-            
-            # Run database migrations
-            echo "🗄️ Running database migrations..."
-            docker-compose exec -T api bash -c "alembic upgrade head" || {
-              echo "❌ Migration failed, checking logs..."
-              docker-compose logs --tail=50 api
+            # Wait for PostgreSQL to be ready
+            echo "⏳ Waiting for database to be ready..."
+            until docker compose exec -T postgres pg_isready -U \${POSTGRES_USER:-tenderai} -d \${POSTGRES_DB:-tenderai_bf}; do
+              echo "  Waiting for postgres..."
+              sleep 3
+            done
+            echo "✅ Database is ready"
+
+            # Wait for MinIO to be ready (healthcheck interval is 30s; must be up before migrations)
+            echo "⏳ Waiting for MinIO to be ready..."
+            for minio_attempt in \$(seq 1 20); do
+              if docker compose exec -T minio curl -sf http://localhost:9000/minio/health/live > /dev/null 2>&1; then
+                echo "✅ MinIO is ready (attempt \${minio_attempt})"
+                break
+              fi
+              if [ \${minio_attempt} -eq 20 ]; then
+                echo "❌ MinIO did not become ready in time"
+                docker compose logs --tail=30 minio
+                exit 1
+              fi
+              echo "  Waiting for minio (attempt \${minio_attempt})..."
+              sleep 5
+            done
+
+            # Run database migrations before starting application services
+            # --no-deps: we waited for dependencies manually above, skip docker-compose's health waits
+            echo "🔄 Running database migrations..."
+            docker compose run --no-deps --rm api alembic upgrade head || {
+              echo "❌ Migration failed"
+              echo "--- postgres logs ---"
+              docker compose logs --tail=30 postgres
+              echo "--- api container logs ---"
+              docker compose logs --tail=30 api
               exit 1
             }
+            echo "✅ Migrations applied"
+
+            # Start only app services — postgres and minio are already running and healthy;
+            # running "up -d --remove-orphans" over the whole project can recreate them
+            # (config hash change) which resets their health state and blocks the api.
+            echo "🚀 Starting application services..."
+            docker compose up -d api frontend worker nginx
+
+            # Immediate status after start
+            echo "📊 Container status (t+0):"
+            docker compose ps
+            echo "📋 API logs immediately after start:"
+            docker compose logs --tail=30 api
+
+            # Wait for API to be healthy before declaring success (up to 3 minutes)
+            echo "⏳ Waiting for API to become healthy..."
+            for i in \$(seq 1 18); do
+              echo "  [attempt \$i/18] docker compose ps api:"
+              docker compose ps api
+              if docker compose exec -T api curl -sf http://localhost:8000/health > /dev/null 2>&1; then
+                echo "✅ API is healthy on attempt \$i"
+                break
+              fi
+              if [ \$i -eq 18 ]; then
+                echo "❌ API did not become healthy after 3 minutes — full logs:"
+                docker compose logs --tail=100 api
+                docker compose logs --tail=30 postgres
+                docker compose logs --tail=30 minio
+                exit 1
+              fi
+              echo "  Attempt \$i: API not ready, waiting 10s..."
+              sleep 10
+            done
             
             # Clean up old images
             echo "🧹 Cleaning up..."
@@ -265,29 +331,22 @@ jobs:
           ssh -p "${SSH_PORT}" "${SSH_USER}@${SSH_HOST}" \
             DEPLOY_PATH="${DEPLOY_PATH}" \
             'bash -s' << 'HEALTHEOF'
-            set -e
             cd "${DEPLOY_PATH}"
-
-            echo "=== Container status ==="
-            docker-compose ps
-
-            # Wait up to 180s: postgres takes ~50s, minio ~90s, then createbuckets + api start
-            MAX_ATTEMPTS=18
-            for i in $(seq 1 $MAX_ATTEMPTS); do
-              STATUS=$(docker-compose ps -q api 2>/dev/null | xargs -r docker inspect --format='{{.State.Status}}' 2>/dev/null || true)
-              if [ "${STATUS}" = "running" ]; then
-                if docker-compose exec -T api curl -sf http://localhost:8000/health > /dev/null 2>&1; then
-                  echo "✅ API is healthy (attempt ${i})"
-                  exit 0
-                fi
+            echo '=== Final container status ==='
+            docker compose ps
+            for i in $(seq 1 6); do
+              if docker compose exec -T api curl -sf http://localhost:8000/health > /dev/null 2>&1; then
+                echo "✅ API OK (attempt $i)"
+                exit 0
               fi
-              echo "  Attempt ${i}/${MAX_ATTEMPTS}: API not ready (container: ${STATUS:-not started}), waiting 10s..."
+              if [ $i -eq 6 ]; then
+                echo "❌ API down after $((i * 10))s — last logs:"
+                docker compose logs --tail=50 api
+                exit 1
+              fi
+              echo "  Attempt $i: API not ready, waiting 10s..."
               sleep 10
             done
-
-            echo "❌ API down after $((MAX_ATTEMPTS * 10))s — last logs:"
-            docker-compose logs --tail=50 api || true
-            exit 1
           HEALTHEOF
 
       - name: Notify deployment success
@@ -370,24 +429,38 @@ jobs:
             # Set environment to staging
             export ENVIRONMENT=staging
             
-            # Stop all services first to avoid port conflicts
-            docker-compose down || true
-            
+            # Stop all services (--remove-orphans cleans up renamed/deleted services)
+            docker compose down --remove-orphans || true
+
             # Pull latest images (use pre-built images from registry)
-            docker-compose pull api ui worker || true
-            
-            # Start services
-            docker-compose up -d
-            
-            # Wait for database to be ready
-            sleep 20
-            
-            # Run database migrations
-            docker-compose exec -T api bash -c "alembic upgrade head" || {
-              echo "Migration failed, checking logs..."
-              docker-compose logs --tail=50 api
+            docker compose pull api frontend worker || true
+
+            # Start dependencies first (PostgreSQL, MinIO)
+            docker compose up -d postgres minio createbuckets
+
+            # Wait for PostgreSQL to be ready
+            until docker compose exec -T postgres pg_isready -U \${POSTGRES_USER:-tenderai} -d \${POSTGRES_DB:-tenderai_bf}; do
+              sleep 3
+            done
+
+            # Wait for MinIO to be ready
+            for minio_attempt in \$(seq 1 20); do
+              if docker compose exec -T minio curl -sf http://localhost:9000/minio/health/live > /dev/null 2>&1; then
+                break
+              fi
+              [ \${minio_attempt} -eq 20 ] && { docker compose logs --tail=30 minio; exit 1; }
+              sleep 5
+            done
+
+            # Run database migrations before starting application services
+            docker compose run --no-deps --rm api alembic upgrade head || {
+              echo "Migration failed, checking postgres logs..."
+              docker compose logs --tail=50 postgres
               exit 1
             }
+            
+            # Start all services
+            docker compose up -d
             
             # Clean up old images
             docker image prune -f

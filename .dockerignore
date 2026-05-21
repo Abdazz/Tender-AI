@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Node / Next.js — CRITICAL: must be excluded so Docker uses npm ci output,
+# not the host-OS node_modules (which contains platform-specific native binaries
+# that don't run on Alpine Linux).
+frontend/node_modules/
+frontend/.next/
+
+# Dev / local state
+.env
+.env.*
+!.env.example
+*.log
+logs/
+
+# Git
+.git/
+.gitignore
+
+# Docker
+docker-compose.override.yml
+
+# Test/temp
+tests/
+*.test.*
+*.spec.*
+tmp/
+temp/

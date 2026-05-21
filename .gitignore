@@ -187,7 +187,6 @@ temp/
 tmp/
 
 # Docker
-.dockerignore
 docker-compose.override.yml
 
 # MinIO data
@@ -216,3 +215,7 @@ ocr-temp/
 *.pdf.tmp
 
 generated_docs/ 
+# Frontend source dirs — negate Python patterns above that are too broad
+!frontend/lib/
+!frontend/app/**/logs/
+!frontend/app/**/reports/
