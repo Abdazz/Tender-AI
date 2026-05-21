@@ -19,7 +19,7 @@ interface Props {
   /** When provided, the dialog is in edit mode; when null it is in create mode. */
   source?: SourceOut | null;
   /** Custom trigger element; defaults to a "Nouvelle source" button. */
-  trigger?: React.ReactNode;
+  trigger?: React.ReactElement;
   onSaved: () => void;
 }
 
