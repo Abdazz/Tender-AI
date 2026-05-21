@@ -106,7 +106,7 @@ export function SourceFormDialog({ source, trigger, onSaved }: Props) {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger render={trigger ?? <Button />}>
-        {trigger ? undefined : "Nouvelle source"}
+        {trigger ? trigger.props.children : "Nouvelle source"}
       </DialogTrigger>
       <DialogContent className="max-w-lg">
         <DialogHeader>
