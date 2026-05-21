@@ -136,7 +136,7 @@ export function SourceFormDialog({ source, trigger, onSaved }: Props) {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="src-list-url">URL de liste (page des appels d'offres)</Label>
+            <Label htmlFor="src-list-url">URL de liste (page des appels d&apos;offres)</Label>
             <Input
               id="src-list-url"
               type="url"
