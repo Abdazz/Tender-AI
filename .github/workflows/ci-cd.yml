@@ -282,28 +282,32 @@ jobs:
             }
             echo "✅ Migrations applied"
 
-            # Start all services
+            # Start only app services — postgres and minio are already running and healthy;
+            # running "up -d --remove-orphans" over the whole project can recreate them
+            # (config hash change) which resets their health state and blocks the api.
             echo "🚀 Starting application services..."
-            docker compose up -d --remove-orphans
-            
+            docker compose up -d api frontend worker nginx
+
             # Immediate status after start
             echo "📊 Container status (t+0):"
             docker compose ps
             echo "📋 API logs immediately after start:"
             docker compose logs --tail=30 api
-            
-            # Wait for API to be healthy before declaring success
+
+            # Wait for API to be healthy before declaring success (up to 3 minutes)
             echo "⏳ Waiting for API to become healthy..."
-            for i in 1 2 3 4 5 6; do
-              echo "  [attempt \$i] docker compose ps:"
+            for i in \$(seq 1 18); do
+              echo "  [attempt \$i/18] docker compose ps api:"
               docker compose ps api
               if docker compose exec -T api curl -sf http://localhost:8000/health > /dev/null 2>&1; then
                 echo "✅ API is healthy on attempt \$i"
                 break
               fi
-              if [ \$i -eq 6 ]; then
-                echo "❌ API did not become healthy — full logs:"
+              if [ \$i -eq 18 ]; then
+                echo "❌ API did not become healthy after 3 minutes — full logs:"
                 docker compose logs --tail=100 api
+                docker compose logs --tail=30 postgres
+                docker compose logs --tail=30 minio
                 exit 1
               fi
               echo "  Attempt \$i: API not ready, waiting 10s..."
@@ -319,9 +323,24 @@ jobs:
 
       - name: Health check
         run: |
-          sleep 5
-          ssh -p ${{ secrets.PRODUCTION_SSH_PORT || 22 }} ${{ secrets.PRODUCTION_USER }}@${{ secrets.PRODUCTION_HOST }} \
-            "cd ${{ secrets.PRODUCTION_DEPLOY_PATH || '/opt/tenderai-bf' }} && echo '=== Final container status ===' && docker compose ps && docker compose exec -T api curl -sf http://localhost:8000/health && echo '✅ API OK' || (echo '❌ API down — last logs:' && docker compose logs --tail=30 api && exit 1)"
+          ssh -p ${{ secrets.PRODUCTION_SSH_PORT || 22 }} ${{ secrets.PRODUCTION_USER }}@${{ secrets.PRODUCTION_HOST }} "bash -s" << 'HEALTHEOF'
+            cd ${{ secrets.PRODUCTION_DEPLOY_PATH || '/opt/tenderai-bf' }}
+            echo '=== Final container status ==='
+            docker compose ps
+            for i in $(seq 1 6); do
+              if docker compose exec -T api curl -sf http://localhost:8000/health > /dev/null 2>&1; then
+                echo "✅ API OK (attempt $i)"
+                exit 0
+              fi
+              if [ $i -eq 6 ]; then
+                echo "❌ API down after $((i * 10))s — last logs:"
+                docker compose logs --tail=50 api
+                exit 1
+              fi
+              echo "  Attempt $i: API not ready, waiting 10s..."
+              sleep 10
+            done
+          HEALTHEOF
 
       - name: Notify deployment success
         if: success()
