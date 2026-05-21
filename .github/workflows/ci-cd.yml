@@ -206,9 +206,9 @@ jobs:
             # Set environment to production
             export ENVIRONMENT=production
             
-            # Stop all services first to avoid port conflicts
+            # Stop all services first (--remove-orphans stops renamed/deleted services like old tenderai-ui)
             echo "🛑 Stopping existing services..."
-            docker-compose down || true
+            docker-compose down --remove-orphans || true
             
             # Ensure logs directory has correct permissions
             echo "🔧 Setting up logs directory..."
@@ -252,16 +252,36 @@ jobs:
               sleep 3
             done
             echo "✅ Database is ready"
-            
+
+            # Wait for MinIO to be ready (healthcheck interval is 30s; must be up before migrations)
+            echo "⏳ Waiting for MinIO to be ready..."
+            for minio_attempt in \$(seq 1 20); do
+              if docker-compose exec -T minio curl -sf http://localhost:9000/minio/health/live > /dev/null 2>&1; then
+                echo "✅ MinIO is ready (attempt \${minio_attempt})"
+                break
+              fi
+              if [ \${minio_attempt} -eq 20 ]; then
+                echo "❌ MinIO did not become ready in time"
+                docker-compose logs --tail=30 minio
+                exit 1
+              fi
+              echo "  Waiting for minio (attempt \${minio_attempt})..."
+              sleep 5
+            done
+
             # Run database migrations before starting application services
+            # --no-deps: we waited for dependencies manually above, skip docker-compose's health waits
             echo "🔄 Running database migrations..."
-            docker-compose run --rm api alembic upgrade head || {
-              echo "❌ Migration failed, checking postgres logs..."
-              docker-compose logs --tail=50 postgres
+            docker-compose run --no-deps --rm api alembic upgrade head || {
+              echo "❌ Migration failed"
+              echo "--- postgres logs ---"
+              docker-compose logs --tail=30 postgres
+              echo "--- api container logs ---"
+              docker-compose logs --tail=30 api
               exit 1
             }
             echo "✅ Migrations applied"
-            
+
             # Start all services
             echo "🚀 Starting application services..."
             docker-compose up -d --remove-orphans
@@ -383,22 +403,31 @@ jobs:
             # Set environment to staging
             export ENVIRONMENT=staging
             
-            # Stop all services first to avoid port conflicts
-            docker-compose down || true
-            
+            # Stop all services (--remove-orphans cleans up renamed/deleted services)
+            docker-compose down --remove-orphans || true
+
             # Pull latest images (use pre-built images from registry)
             docker-compose pull api frontend worker || true
-            
+
             # Start dependencies first (PostgreSQL, MinIO)
             docker-compose up -d postgres minio createbuckets
-            
+
             # Wait for PostgreSQL to be ready
             until docker-compose exec -T postgres pg_isready -U \${POSTGRES_USER:-tenderai} -d \${POSTGRES_DB:-tenderai_bf}; do
               sleep 3
             done
-            
+
+            # Wait for MinIO to be ready
+            for minio_attempt in \$(seq 1 20); do
+              if docker-compose exec -T minio curl -sf http://localhost:9000/minio/health/live > /dev/null 2>&1; then
+                break
+              fi
+              [ \${minio_attempt} -eq 20 ] && { docker-compose logs --tail=30 minio; exit 1; }
+              sleep 5
+            done
+
             # Run database migrations before starting application services
-            docker-compose run --rm api alembic upgrade head || {
+            docker-compose run --no-deps --rm api alembic upgrade head || {
               echo "Migration failed, checking postgres logs..."
               docker-compose logs --tail=50 postgres
               exit 1
