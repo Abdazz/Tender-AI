@@ -256,11 +256,39 @@ jobs:
           ENDSSH
 
       - name: Health check
+        env:
+          SSH_PORT: ${{ secrets.PRODUCTION_SSH_PORT || 22 }}
+          SSH_USER: ${{ secrets.PRODUCTION_USER }}
+          SSH_HOST: ${{ secrets.PRODUCTION_HOST }}
+          DEPLOY_PATH: ${{ secrets.PRODUCTION_DEPLOY_PATH || '/opt/tenderai-bf' }}
         run: |
-          sleep 10
-          # Check container health instead of external URL (Nginx may not be configured yet)
-          ssh -p ${{ secrets.PRODUCTION_SSH_PORT || 22 }} ${{ secrets.PRODUCTION_USER }}@${{ secrets.PRODUCTION_HOST }} \
-            "cd ${{ secrets.PRODUCTION_DEPLOY_PATH || '/opt/tenderai-bf' }} && docker-compose exec -T api curl -f http://localhost:8000/health || exit 1"
+          ssh -p "${SSH_PORT}" "${SSH_USER}@${SSH_HOST}" \
+            DEPLOY_PATH="${DEPLOY_PATH}" \
+            'bash -s' << 'HEALTHEOF'
+            set -e
+            cd "${DEPLOY_PATH}"
+
+            echo "=== Container status ==="
+            docker-compose ps
+
+            # Wait up to 180s: postgres takes ~50s, minio ~90s, then createbuckets + api start
+            MAX_ATTEMPTS=18
+            for i in $(seq 1 $MAX_ATTEMPTS); do
+              STATUS=$(docker-compose ps -q api 2>/dev/null | xargs -r docker inspect --format='{{.State.Status}}' 2>/dev/null || true)
+              if [ "${STATUS}" = "running" ]; then
+                if docker-compose exec -T api curl -sf http://localhost:8000/health > /dev/null 2>&1; then
+                  echo "✅ API is healthy (attempt ${i})"
+                  exit 0
+                fi
+              fi
+              echo "  Attempt ${i}/${MAX_ATTEMPTS}: API not ready (container: ${STATUS:-not started}), waiting 10s..."
+              sleep 10
+            done
+
+            echo "❌ API down after $((MAX_ATTEMPTS * 10))s — last logs:"
+            docker-compose logs --tail=50 api || true
+            exit 1
+          HEALTHEOF
 
       - name: Notify deployment success
         if: success()
