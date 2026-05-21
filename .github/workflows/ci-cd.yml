@@ -288,6 +288,12 @@ jobs:
               echo "✅ Admin user ready" || \
               echo "⚠️  create-admin exited non-zero (check TENDERAI_ADMIN_PASSWORD is set)"
 
+            # Seed sources from settings.yaml into the database (idempotent: skips existing)
+            echo "🌱 Seeding sources..."
+            docker compose run --no-deps --rm api tenderai seed-sources </dev/null && \
+              echo "✅ Sources seeded" || \
+              echo "⚠️  seed-sources exited non-zero"
+
             # Start only app services — postgres and minio are already running and healthy;
             # running "up -d --remove-orphans" over the whole project can recreate them
             # (config hash change) which resets their health state and blocks the api.
@@ -464,6 +470,10 @@ jobs:
               docker compose logs --tail=50 postgres
               exit 1
             }
+
+            # Ensure admin user and seed sources (both idempotent)
+            docker compose run --no-deps --rm api tenderai create-admin </dev/null || true
+            docker compose run --no-deps --rm api tenderai seed-sources </dev/null || true
             
             # Start all services
             docker compose up -d

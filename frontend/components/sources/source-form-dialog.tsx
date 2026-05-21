@@ -23,7 +23,16 @@ interface Props {
   onSaved: () => void;
 }
 
-const PARSER_TYPES = ["html", "pdf", "html-pdf-mixed"] as const;
+const PARSER_TYPES = [
+  "html",
+  "pdf",
+  "html-pdf-mixed",
+  "html-listing",
+  "pdf_rag",
+  "pdf_quotidien",
+  "ungm",
+  "google_search",
+] as const;
 
 const empty = {
   name: "",
