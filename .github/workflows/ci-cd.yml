@@ -420,8 +420,8 @@ jobs:
             # Pull latest code
             git pull origin staging
 
-            # Copy staging override (ports 19080/19443, staging container names)
-            cp docker-compose.override.staging.yml docker-compose.override.yml
+            # Copy unified server override (parameterized via .env.staging)
+            cp docker-compose.server.yml docker-compose.override.yml
 
             # Setup staging environment
             if [ -f ".env" ]; then
@@ -438,46 +438,45 @@ jobs:
             # Login to GitHub Container Registry
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
-            # Isolate staging compose project from production (separate network/volume namespaces)
-            export COMPOSE_PROJECT_NAME=tenderai-staging
-            export ENVIRONMENT=staging
-            
+            # Load orchestration variables (ENV_NAME, IMAGE_TAG, COMPOSE_PROJECT_NAME, etc.)
+            set -a; source .env.staging; set +a
+
             # Stop all services (--remove-orphans cleans up renamed/deleted services)
-            docker compose down --remove-orphans || true
+            docker compose --env-file .env.staging down --remove-orphans || true
 
             # Pull latest images (use pre-built images from registry)
-            docker compose pull api frontend worker || true
+            docker compose --env-file .env.staging pull api frontend worker || true
 
             # Start dependencies first (PostgreSQL, MinIO)
-            docker compose up -d postgres minio createbuckets
+            docker compose --env-file .env.staging up -d postgres minio createbuckets
 
             # Wait for PostgreSQL to be ready
-            until docker compose exec -T postgres pg_isready -U \${POSTGRES_USER:-tenderai} -d \${POSTGRES_DB:-tenderai_bf} </dev/null; do
+            until docker compose --env-file .env.staging exec -T postgres pg_isready -U \${POSTGRES_USER:-tenderai} -d \${POSTGRES_DB:-tenderai_bf} </dev/null; do
               sleep 3
             done
 
             # Wait for MinIO to be ready
             for minio_attempt in \$(seq 1 20); do
-              if docker compose exec -T minio curl -sf http://localhost:9000/minio/health/live </dev/null > /dev/null 2>&1; then
+              if docker compose --env-file .env.staging exec -T minio curl -sf http://localhost:9000/minio/health/live </dev/null > /dev/null 2>&1; then
                 break
               fi
-              [ \${minio_attempt} -eq 20 ] && { docker compose logs --tail=30 minio; exit 1; }
+              [ \${minio_attempt} -eq 20 ] && { docker compose --env-file .env.staging logs --tail=30 minio; exit 1; }
               sleep 5
             done
 
             # Run database migrations before starting application services
-            docker compose run --no-deps --rm api alembic upgrade head </dev/null || {
+            docker compose --env-file .env.staging run --no-deps --rm api alembic upgrade head </dev/null || {
               echo "Migration failed, checking postgres logs..."
-              docker compose logs --tail=50 postgres
+              docker compose --env-file .env.staging logs --tail=50 postgres
               exit 1
             }
 
             # Ensure admin user and seed sources (both idempotent)
-            docker compose run --no-deps --rm api tenderai create-admin </dev/null || true
-            docker compose run --no-deps --rm api tenderai seed-sources </dev/null || true
+            docker compose --env-file .env.staging run --no-deps --rm api tenderai create-admin </dev/null || true
+            docker compose --env-file .env.staging run --no-deps --rm api tenderai seed-sources </dev/null || true
             
             # Start application services (nginx proxied by Apache on port 19443)
-            docker compose up -d api frontend worker nginx
+            docker compose --env-file .env.staging up -d api frontend worker nginx
 
             # Clean up old images
             docker image prune -f
