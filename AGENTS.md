@@ -131,8 +131,9 @@ ChromaDB volume `chroma-data` is shared between `api` and `worker` containers, m
 
 **Production setup:**
 ```bash
-cp docker-compose.override.prod.yml docker-compose.override.yml
-# then: docker compose up -d
+cp docker-compose.server.yml docker-compose.override.yml
+# Load environment file during docker compose commands
+docker compose --env-file .env.prod up -d
 ```
 
 ---

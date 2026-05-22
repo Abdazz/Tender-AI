@@ -136,10 +136,10 @@ sudo ./scripts/deploy.sh main deploy
 # sudo chown $USER:$USER /opt/tenderai-bf
 # cd /opt/tenderai-bf
 # git clone https://github.com/Abdazz/Tender-AI.git .
-# cp .env.example .env
+# cp .env.prod.example .env
 # nano .env  # Configurer les variables d'environnement
-# cp docker-compose.override.prod.yml docker-compose.override.yml
-# docker-compose up -d
+# cp docker-compose.server.yml docker-compose.override.yml
+# docker compose --env-file .env up -d
 # docker-compose exec api alembic upgrade head
 ```
 
@@ -158,7 +158,7 @@ sudo ./scripts/deploy.sh main deploy
 8. Nettoyage des anciennes images
 9. Health check de l'application
 
-**Note**: Le même fichier `docker-compose.yml` est utilisé pour tous les environnements. En production, le fichier `docker-compose.override.yml` (copié depuis `docker-compose.override.prod.yml`) configure l'utilisation des images du registry au lieu de rebuilder localement.
+**Note**: Le même fichier `docker-compose.server.yml` est utilisé pour tous les environnements. En production, le fichier `docker-compose.override.yml` (copié depuis `docker-compose.server.yml`) configure l'utilisation des images du registry au lieu de rebuilder localement.
 
 ## 🧪 Tests en local
 
