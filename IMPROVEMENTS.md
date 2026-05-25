@@ -11,8 +11,8 @@ Tracking file for planned improvements to the TenderAI BF system.
 | # | Title | Status | Notes |
 |---|-------|--------|-------|
 | 1 | [Multi-country pipeline support](#1-multi-country-pipeline-support) | `planned` | |
-| 2 | [Database-persisted configuration](#2-database-persisted-configuration) | `planned` | Architecture decision pending |
-| 3 | [Settings management module (admin dashboard)](#3-settings-management-module-admin-dashboard) | `planned` | Depends on #2 |
+| 2 | [Database-persisted configuration](#2-database-persisted-configuration) | `done` | Architecture decision pending |
+| 3 | [Settings management module (admin dashboard)](#3-settings-management-module-admin-dashboard) | `done` | Depends on #2 |
 
 ---
 
@@ -41,7 +41,7 @@ The pipeline is currently global (single instance, single set of sources). Add a
 
 ### 2. Database-persisted configuration
 
-**Status:** `planned`
+**Status:** `done`
 
 Today all configuration lives in `settings.yaml` and environment variables, requiring a file edit + service restart to change anything at runtime. Persist mutable operational settings (sources, prompts, schedules, relevance thresholds, email targets) in the database so they can be updated through the admin API without restarting services.
 
@@ -68,7 +68,7 @@ Option B is preferred: simpler at runtime, avoids silent divergence between file
 
 ### 3. Settings management module (admin dashboard)
 
-**Status:** `planned`
+**Status:** `done`
 **Depends on:** #2 (Database-persisted configuration)
 
 Replace the current read-only JSON dump at `/settings` with a structured, editable settings UI. Settings are grouped by section with inline editing, validation, and save per section. Secrets and infrastructure URLs (database, MinIO, SMTP credentials) remain read-only in the UI — they are managed via environment variables only.
