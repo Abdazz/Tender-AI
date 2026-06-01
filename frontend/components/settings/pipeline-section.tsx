@@ -18,9 +18,9 @@ export interface PipelineData {
   max_file_size_mb: number;
 }
 
-interface Props { initialData: PipelineData; }
+interface Props { initialData: PipelineData; saveUrl?: string; }
 
-export function PipelineSection({ initialData }: Props) {
+export function PipelineSection({ initialData, saveUrl = "/api/proxy/settings/pipeline" }: Props) {
   const [form, setForm] = useState<PipelineData>(initialData);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -37,7 +37,7 @@ export function PipelineSection({ initialData }: Props) {
     setError("");
     setSuccess(false);
     try {
-      const res = await fetch("/api/proxy/settings/pipeline", {
+      const res = await fetch(saveUrl, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),

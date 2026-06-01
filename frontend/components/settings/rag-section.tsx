@@ -15,9 +15,9 @@ export interface RAGData {
   vector_search_query: string;
 }
 
-interface Props { initialData: RAGData; }
+interface Props { initialData: RAGData; saveUrl?: string; }
 
-export function RAGSection({ initialData }: Props) {
+export function RAGSection({ initialData, saveUrl = "/api/proxy/settings/rag" }: Props) {
   const [form, setForm] = useState<RAGData>(initialData);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -32,7 +32,7 @@ export function RAGSection({ initialData }: Props) {
     e.preventDefault();
     setSaving(true); setError(""); setSuccess(false);
     try {
-      const res = await fetch("/api/proxy/settings/rag", {
+      const res = await fetch(saveUrl, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),

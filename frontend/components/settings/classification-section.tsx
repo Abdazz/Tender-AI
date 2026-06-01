@@ -15,9 +15,9 @@ const CATEGORY_LABELS: Record<string, string> = {
   it_consulting: "Conseil IT",
 };
 
-interface Props { initialData: ClassificationData; }
+interface Props { initialData: ClassificationData; saveUrl?: string; }
 
-export function ClassificationSection({ initialData }: Props) {
+export function ClassificationSection({ initialData, saveUrl = "/api/proxy/settings/classification" }: Props) {
   const [form, setForm] = useState<ClassificationData>(initialData);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -35,7 +35,7 @@ export function ClassificationSection({ initialData }: Props) {
     e.preventDefault();
     setSaving(true); setError(""); setSuccess(false);
     try {
-      const res = await fetch("/api/proxy/settings/classification", {
+      const res = await fetch(saveUrl, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),

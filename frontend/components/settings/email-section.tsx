@@ -15,9 +15,9 @@ export interface EmailData {
   signature: string;
 }
 
-interface Props { initialData: EmailData; }
+interface Props { initialData: EmailData; saveUrl?: string; }
 
-export function EmailSection({ initialData }: Props) {
+export function EmailSection({ initialData, saveUrl = "/api/proxy/settings/email" }: Props) {
   const [form, setForm] = useState<EmailData>(initialData);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -32,7 +32,7 @@ export function EmailSection({ initialData }: Props) {
     e.preventDefault();
     setSaving(true); setError(""); setSuccess(false);
     try {
-      const res = await fetch("/api/proxy/settings/email", {
+      const res = await fetch(saveUrl, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),

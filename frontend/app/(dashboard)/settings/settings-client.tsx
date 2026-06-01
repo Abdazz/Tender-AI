@@ -18,11 +18,19 @@ type Tab = typeof TABS[number];
 
 interface Props {
   sections: Record<string, Record<string, unknown>>;
-  readonly: Record<string, Record<string, unknown>>;
+  readonly: Record<string, unknown>;
+  countryId?: number;
 }
 
-export function SettingsClient({ sections, readonly }: Props) {
+export function SettingsClient({ sections, readonly, countryId }: Props) {
   const [active, setActive] = useState<Tab>("Pipeline");
+
+  function saveUrl(section: string): string {
+    if (countryId !== undefined) {
+      return `/api/proxy/countries/${countryId}/settings/${section}`;
+    }
+    return `/api/proxy/settings/${section}`;
+  }
 
   return (
     <div className="space-y-6">
@@ -43,52 +51,73 @@ export function SettingsClient({ sections, readonly }: Props) {
       </div>
 
       {active === "Pipeline" && sections.pipeline && (
-        <PipelineSection initialData={sections.pipeline as unknown as PipelineData} />
+        <PipelineSection
+          initialData={sections.pipeline as unknown as PipelineData}
+          saveUrl={saveUrl("pipeline")}
+        />
       )}
       {active === "Planificateur" && sections.scheduler && (
-        <SchedulerSection initialData={sections.scheduler as unknown as SchedulerData} />
+        <SchedulerSection
+          initialData={sections.scheduler as unknown as SchedulerData}
+          saveUrl={saveUrl("scheduler")}
+        />
       )}
       {active === "LLM" && sections.llm && (
-        <LLMSection initialData={sections.llm as unknown as LLMData} />
+        <LLMSection
+          initialData={sections.llm as unknown as LLMData}
+          saveUrl={saveUrl("llm")}
+        />
       )}
       {active === "Email" && sections.email && (
-        <EmailSection initialData={sections.email as unknown as EmailData} />
+        <EmailSection
+          initialData={sections.email as unknown as EmailData}
+          saveUrl={saveUrl("email")}
+        />
       )}
       {active === "RAG" && sections.rag && (
-        <RAGSection initialData={sections.rag as unknown as RAGData} />
+        <RAGSection
+          initialData={sections.rag as unknown as RAGData}
+          saveUrl={saveUrl("rag")}
+        />
       )}
       {active === "Classification" && sections.classification && (
-        <ClassificationSection initialData={sections.classification as unknown as ClassificationData} />
+        <ClassificationSection
+          initialData={sections.classification as unknown as ClassificationData}
+          saveUrl={saveUrl("classification")}
+        />
       )}
       {active === "Prompts" && sections.prompts && (
-        <PromptsSection initialData={sections.prompts as unknown as PromptsData} />
+        <PromptsSection
+          initialData={sections.prompts as unknown as PromptsData}
+          saveUrl={saveUrl("prompts")}
+        />
       )}
       {active === "Infrastructure" && (
         <div className="space-y-4">
           <ReadonlySection
             title="Base de données"
-            fields={[{ label: "URL", value: String(readonly.database?.url ?? "***") }]}
+            fields={[{ label: "URL", value: String((readonly.database as Record<string, unknown>)?.url ?? "***") }]}
           />
           <ReadonlySection
             title="Stockage MinIO"
             fields={[
-              { label: "Endpoint", value: String(readonly.minio?.endpoint ?? "***") },
-              { label: "Bucket", value: String(readonly.minio?.bucket_name ?? "***") },
+              { label: "Endpoint", value: String((readonly.minio as Record<string, unknown>)?.endpoint ?? "***") },
+              { label: "Bucket", value: String((readonly.minio as Record<string, unknown>)?.bucket_name ?? "***") },
               { label: "Credentials", value: "***" },
             ]}
           />
           <ReadonlySection
             title="SMTP"
             fields={[
-              { label: "Hôte", value: String(readonly.smtp?.host ?? "***") },
-              { label: "Port", value: String(readonly.smtp?.port ?? "***") },
+              { label: "Hôte", value: String((readonly.smtp as Record<string, unknown>)?.host ?? "***") },
+              { label: "Port", value: String((readonly.smtp as Record<string, unknown>)?.port ?? "***") },
               { label: "Credentials", value: "***" },
             ]}
           />
           <ReadonlySection
             title="Sécurité"
             fields={[
-              { label: "Admin username", value: String(readonly.security?.admin_username ?? "***") },
+              { label: "Admin username", value: String((readonly.security as Record<string, unknown>)?.admin_username ?? "***") },
               { label: "JWT secret", value: "***" },
               { label: "Admin password", value: "***" },
             ]}

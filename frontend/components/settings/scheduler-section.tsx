@@ -14,9 +14,9 @@ export interface SchedulerData {
   run_on_startup: boolean;
 }
 
-interface Props { initialData: SchedulerData; }
+interface Props { initialData: SchedulerData; saveUrl?: string; }
 
-export function SchedulerSection({ initialData }: Props) {
+export function SchedulerSection({ initialData, saveUrl = "/api/proxy/settings/scheduler" }: Props) {
   const [form, setForm] = useState<SchedulerData>(initialData);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -31,7 +31,7 @@ export function SchedulerSection({ initialData }: Props) {
     e.preventDefault();
     setSaving(true); setError(""); setSuccess(false);
     try {
-      const res = await fetch("/api/proxy/settings/scheduler", {
+      const res = await fetch(saveUrl, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),

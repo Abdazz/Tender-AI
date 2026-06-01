@@ -22,9 +22,9 @@ const PROMPT_LABELS: Record<keyof PromptsData, string> = {
   deduplication: "Déduplication",
 };
 
-interface Props { initialData: PromptsData; }
+interface Props { initialData: PromptsData; saveUrl?: string; }
 
-export function PromptsSection({ initialData }: Props) {
+export function PromptsSection({ initialData, saveUrl = "/api/proxy/settings/prompts" }: Props) {
   const [form, setForm] = useState<PromptsData>(initialData);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -42,7 +42,7 @@ export function PromptsSection({ initialData }: Props) {
     e.preventDefault();
     setSaving(true); setError(""); setSuccess(false);
     try {
-      const res = await fetch("/api/proxy/settings/prompts", {
+      const res = await fetch(saveUrl, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),

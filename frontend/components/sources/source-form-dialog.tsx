@@ -21,6 +21,8 @@ interface Props {
   /** Custom trigger element; defaults to a "Nouvelle source" button. */
   trigger?: React.ReactElement;
   onSaved: () => void;
+  /** When provided, new sources will be associated with this country. */
+  countryId?: number;
 }
 
 const PARSER_TYPES = [
@@ -43,7 +45,7 @@ const empty = {
   enabled: true,
 };
 
-export function SourceFormDialog({ source, trigger, onSaved }: Props) {
+export function SourceFormDialog({ source, trigger, onSaved, countryId }: Props) {
   const isEdit = !!source;
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ ...empty });
@@ -84,10 +86,14 @@ export function SourceFormDialog({ source, trigger, onSaved }: Props) {
     const method = isEdit ? "PUT" : "POST";
 
     try {
+      const payload = isEdit
+        ? form
+        : { ...form, ...(countryId !== undefined ? { country_id: countryId } : {}) };
+
       const res = await fetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify(payload),
       });
       if (!res.ok) {
         const data = await res.json();

@@ -19,9 +19,9 @@ export interface LLMData {
   timeout: number;
 }
 
-interface Props { initialData: LLMData; }
+interface Props { initialData: LLMData; saveUrl?: string; }
 
-export function LLMSection({ initialData }: Props) {
+export function LLMSection({ initialData, saveUrl = "/api/proxy/settings/llm" }: Props) {
   const [form, setForm] = useState<LLMData>(initialData);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -36,7 +36,7 @@ export function LLMSection({ initialData }: Props) {
     e.preventDefault();
     setSaving(true); setError(""); setSuccess(false);
     try {
-      const res = await fetch("/api/proxy/settings/llm", {
+      const res = await fetch(saveUrl, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),
