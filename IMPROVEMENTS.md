@@ -10,7 +10,7 @@ Tracking file for planned improvements to the TenderAI BF system.
 
 | # | Title | Status | Notes |
 |---|-------|--------|-------|
-| 1 | [Multi-country pipeline support](#1-multi-country-pipeline-support) | `planned` | |
+| 1 | [Multi-country pipeline support](#1-multi-country-pipeline-support) | `done` | |
 | 2 | [Database-persisted configuration](#2-database-persisted-configuration) | `done` | Architecture decision pending |
 | 3 | [Settings management module (admin dashboard)](#3-settings-management-module-admin-dashboard) | `done` | Depends on #2 |
 
@@ -20,7 +20,7 @@ Tracking file for planned improvements to the TenderAI BF system.
 
 ### 1. Multi-country pipeline support
 
-**Status:** `planned`
+**Status:** `done`
 
 The pipeline is currently global (single instance, single set of sources). Add a first-class `Country` entity so that each country has its own set of tender sources, LLM prompts, scheduling configuration, and notification recipients. Running the pipeline for country X must be fully isolated from country Y — separate `Run` records, separate `Notice` tables (or a country FK), separate reports and email recipients.
 
