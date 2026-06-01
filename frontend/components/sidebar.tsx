@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
+import { CountrySelector } from "@/components/country-selector";
 
 const baseLinks = [
   { href: "/", label: "Dashboard" },
@@ -12,7 +13,10 @@ const baseLinks = [
   { href: "/logs", label: "Logs" },
 ];
 
-const adminLinks = [{ href: "/users", label: "Utilisateurs" }];
+const adminLinks = [
+  { href: "/users", label: "Utilisateurs" },
+  { href: "/countries", label: "Pays" },
+];
 
 interface SidebarProps {
   role: "admin" | "viewer";
@@ -35,6 +39,7 @@ export function Sidebar({ role, username }: SidebarProps) {
         <h1 className="font-bold text-lg">TenderAI BF</h1>
         <p className="text-xs text-slate-400 mt-1">{username}</p>
       </div>
+      <CountrySelector />
       <nav className="flex-1 p-2 space-y-1">
         {links.map(({ href, label }) => (
           <Link
