@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { jwtVerify } from "jose";
 
 const PUBLIC_PATHS = ["/login", "/api/auth/login", "/api/auth/logout"];
+const SUPER_ADMIN_PATHS = ["/users", "/countries"];
 const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET ?? "");
 
 export async function middleware(request: NextRequest) {
@@ -12,7 +13,6 @@ export async function middleware(request: NextRequest) {
   }
 
   const token = request.cookies.get("auth_token")?.value;
-
   if (!token) {
     return NextResponse.redirect(new URL("/login", request.url));
   }
@@ -24,7 +24,9 @@ export async function middleware(request: NextRequest) {
       return NextResponse.redirect(new URL("/change-password", request.url));
     }
 
-    if (pathname.startsWith("/users") && payload.role !== "admin") {
+    const role = payload.role as string;
+
+    if (SUPER_ADMIN_PATHS.some((p) => pathname.startsWith(p)) && role !== "super_admin") {
       return NextResponse.redirect(new URL("/", request.url));
     }
 

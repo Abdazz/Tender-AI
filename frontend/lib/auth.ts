@@ -3,7 +3,8 @@ import { decodeJwt } from "jose";
 export interface JWTPayload {
   sub: string;
   email: string;
-  role: "admin" | "viewer";
+  role: "super_admin" | "admin" | "viewer";
+  country_id: number | null;
   password_reset_required: boolean;
   exp: number;
 }
@@ -22,7 +23,7 @@ export function isTokenExpired(token: string): boolean {
   return payload.exp * 1000 < Date.now();
 }
 
-export function getRole(token: string): "admin" | "viewer" | null {
+export function getRole(token: string): "super_admin" | "admin" | "viewer" | null {
   const payload = decodeToken(token);
   return payload?.role ?? null;
 }
