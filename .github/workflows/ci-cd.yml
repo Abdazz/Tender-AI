@@ -430,17 +430,13 @@ jobs:
             # Copy unified server override (parameterized via .env.staging)
             cp docker-compose.server.yml docker-compose.override.yml
 
-            # Setup staging environment
-            if [ -f ".env" ]; then
-              sed -i 's/^POSTGRES_PORT=/#POSTGRES_PORT=/' .env
-              sed -i 's/^MINIO_PORT=/#MINIO_PORT=/' .env
-              sed -i 's/^MINIO_CONSOLE_PORT=/#MINIO_CONSOLE_PORT=/' .env
-              sed -i 's/^API_PORT=/#API_PORT=/' .env
-              sed -i 's/^UI_PORT=/#UI_PORT=/' .env
-              # Inject security credentials from GitHub Secrets
-              sed -i "s|^TENDERAI_JWT_SECRET=.*|TENDERAI_JWT_SECRET=${TENDERAI_JWT_SECRET}|" .env
-              sed -i "s|^TENDERAI_ADMIN_PASSWORD=.*|TENDERAI_ADMIN_PASSWORD=${TENDERAI_ADMIN_PASSWORD}|" .env
-            fi
+            # .env.staging is the single source of truth for staging.
+            # Symlink .env → .env.staging so docker-compose service env_file: .env works.
+            ln -sf .env.staging .env
+
+            # Inject security credentials from GitHub Secrets into .env.staging
+            sed -i "s|^TENDERAI_JWT_SECRET=.*|TENDERAI_JWT_SECRET=${TENDERAI_JWT_SECRET}|" .env.staging
+            sed -i "s|^TENDERAI_ADMIN_PASSWORD=.*|TENDERAI_ADMIN_PASSWORD=${TENDERAI_ADMIN_PASSWORD}|" .env.staging
 
             # Login to GitHub Container Registry
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
