@@ -424,6 +424,7 @@ jobs:
             cd \${DEPLOY_PATH}
 
             # Pull latest code
+            git config pull.ff only
             git pull origin staging
 
             # Copy unified server override (parameterized via .env.staging)
