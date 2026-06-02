@@ -399,13 +399,13 @@ jobs:
       - name: Add server to known hosts
         run: |
           mkdir -p ~/.ssh
-          ssh-keyscan -H ${{ secrets.STAGING_HOST }} >> ~/.ssh/known_hosts
+          ssh-keyscan -H ${{ secrets.PRODUCTION_HOST }} >> ~/.ssh/known_hosts
 
       - name: Deploy to staging server
         env:
-          HOST: ${{ secrets.STAGING_HOST }}
-          USER: ${{ secrets.STAGING_USER }}
-          PORT: ${{ secrets.STAGING_SSH_PORT || 22 }}
+          HOST: ${{ secrets.PRODUCTION_HOST }}
+          USER: ${{ secrets.PRODUCTION_USER }}
+          PORT: ${{ secrets.PRODUCTION_SSH_PORT || 22 }}
           DEPLOY_PATH: ${{ secrets.STAGING_DEPLOY_PATH || '/opt/tenderai-bf-staging' }}
           TENDERAI_JWT_SECRET: ${{ secrets.TENDERAI_JWT_SECRET }}
           TENDERAI_ADMIN_PASSWORD: ${{ secrets.TENDERAI_ADMIN_PASSWORD }}
