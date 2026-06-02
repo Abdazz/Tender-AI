@@ -10,9 +10,10 @@ interface User {
   id: string;
   username: string;
   email: string;
-  role: "admin" | "viewer";
+  role: "super_admin" | "admin" | "viewer";
   is_active: boolean;
   password_reset_required: boolean;
+  country_id: number | null;
 }
 
 export default function UsersPage() {
@@ -79,6 +80,7 @@ export default function UsersPage() {
                   <th className="pb-2">Email</th>
                   <th className="pb-2">Rôle</th>
                   <th className="pb-2">Statut</th>
+                  <th className="pb-2">Pays</th>
                   <th className="pb-2">Actions</th>
                 </tr>
               </thead>
@@ -97,6 +99,9 @@ export default function UsersPage() {
                         {user.is_active ? "Actif" : "Inactif"}
                       </Badge>
                     </td>
+                    <td className="text-slate-500 text-xs">
+                      {user.country_id ?? "—"}
+                    </td>
                     <td className="space-x-2">
                       <Button size="sm" variant="outline" onClick={() => toggleActive(user)}>
                         {user.is_active ? "Désactiver" : "Activer"}
@@ -112,7 +117,7 @@ export default function UsersPage() {
                 ))}
                 {users.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="py-4 text-slate-400 text-center">
+                    <td colSpan={6} className="py-4 text-slate-400 text-center">
                       Aucun utilisateur
                     </td>
                   </tr>
