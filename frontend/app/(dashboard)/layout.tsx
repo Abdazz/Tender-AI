@@ -10,7 +10,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const token = (await cookies()).get("auth_token")?.value;
   if (!token) redirect("/login");
 
-  let payload: { sub: string; role: "admin" | "viewer" };
+  let payload: { sub: string; role: "super_admin" | "admin" | "viewer"; country_id?: number | null };
   try {
     const result = await jwtVerify(token, JWT_SECRET);
     payload = result.payload as typeof payload;
@@ -18,8 +18,11 @@ export default async function DashboardLayout({ children }: { children: React.Re
     redirect("/login");
   }
 
+  const isSuperAdmin = payload.role === "super_admin";
+  const fixedCountryId = isSuperAdmin ? null : (payload.country_id ?? null);
+
   return (
-    <CountryProvider>
+    <CountryProvider isSuperAdmin={isSuperAdmin} fixedCountryId={fixedCountryId}>
       <div className="flex min-h-screen">
         <Sidebar role={payload.role} username={payload.sub} />
         <main className="flex-1 p-6 bg-slate-50">{children}</main>
