@@ -7,11 +7,15 @@ async function getToken(): Promise<string | null> {
   return (await cookies()).get("auth_token")?.value ?? null;
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   const token = await getToken();
   if (!token) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const res = await fetch(`${API_URL}/api/v1/sources?enabled_only=false`, {
+  const params = new URLSearchParams({ enabled_only: "false" });
+  const countryId = request.nextUrl.searchParams.get("country_id");
+  if (countryId) params.set("country_id", countryId);
+
+  const res = await fetch(`${API_URL}/api/v1/sources?${params}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   const data = await res.json();

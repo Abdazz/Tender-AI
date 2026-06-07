@@ -10,13 +10,16 @@ const baseLinks = [
   { href: "/", label: "Dashboard" },
   { href: "/reports", label: "Rapports" },
   { href: "/sources", label: "Sources" },
-  { href: "/settings", label: "Paramètres" },
-  { href: "/logs", label: "Logs" },
 ];
 
 const superAdminLinks = [
   { href: "/users", label: "Utilisateurs" },
   { href: "/countries", label: "Pays" },
+];
+
+const bottomLinks = [
+  { href: "/settings", label: "Paramètres" },
+  { href: "/logs", label: "Logs" },
 ];
 
 interface SidebarProps {
@@ -28,7 +31,9 @@ export function Sidebar({ role, username }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { selectedCountry } = useCountry();
-  const links = role === "super_admin" ? [...baseLinks, ...superAdminLinks] : baseLinks;
+  const links = role === "super_admin"
+    ? [...baseLinks, ...superAdminLinks, ...bottomLinks]
+    : [...baseLinks, ...bottomLinks];
 
   async function handleLogout() {
     await fetch("/api/auth/logout", { method: "POST" });

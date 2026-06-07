@@ -16,17 +16,32 @@ interface User {
   country_id: number | null;
 }
 
+interface Country {
+  id: number;
+  name: string;
+}
+
 export default function UsersPage() {
   const [users, setUsers] = useState<User[]>([]);
+  const [countryMap, setCountryMap] = useState<Record<number, string>>({});
   const [loading, setLoading] = useState(true);
 
   async function loadUsers() {
     setLoading(true);
     try {
-      const res = await fetch("/api/proxy/users");
-      if (res.ok) {
-        const data = await res.json();
+      const [usersRes, countriesRes] = await Promise.all([
+        fetch("/api/proxy/users"),
+        fetch("/api/proxy/countries"),
+      ]);
+      if (usersRes.ok) {
+        const data = await usersRes.json();
         setUsers(data.users);
+      }
+      if (countriesRes.ok) {
+        const data: Country[] = await countriesRes.json();
+        const map: Record<number, string> = {};
+        data.forEach((c) => { map[c.id] = c.name; });
+        setCountryMap(map);
       }
     } finally {
       setLoading(false);
@@ -90,7 +105,7 @@ export default function UsersPage() {
                     <td className="py-3 font-medium">{user.username}</td>
                     <td className="text-slate-500">{user.email}</td>
                     <td>
-                      <Badge variant={user.role === "admin" ? "default" : "secondary"}>
+                      <Badge variant={user.role === "super_admin" ? "default" : user.role === "admin" ? "secondary" : "outline"}>
                         {user.role}
                       </Badge>
                     </td>
@@ -99,8 +114,8 @@ export default function UsersPage() {
                         {user.is_active ? "Actif" : "Inactif"}
                       </Badge>
                     </td>
-                    <td className="text-slate-500 text-xs">
-                      {user.country_id ?? "—"}
+                    <td className="text-slate-600 text-xs">
+                      {user.country_id ? (countryMap[user.country_id] ?? `#${user.country_id}`) : "—"}
                     </td>
                     <td className="space-x-2">
                       <Button size="sm" variant="outline" onClick={() => toggleActive(user)}>

@@ -7,7 +7,7 @@ Existing instruction file: `CLAUDE.md` (more verbose; check it for subsystem tab
 
 ## Stack
 
-Python 3.11+, LangGraph, FastAPI, Next.js frontend, Gradio (legacy UI), PostgreSQL, MinIO (S3), ChromaDB, APScheduler.
+Python 3.11+, LangGraph, FastAPI, Next.js frontend (React), PostgreSQL, MinIO (S3), ChromaDB, APScheduler.
 
 Source package: `src/tenderai_bf/` (flat, one file/dir per subsystem).
 CLI entry point: `tenderai_bf.cli:main` → `tenderai` script.
@@ -48,7 +48,6 @@ make run-once
 
 # Start services individually
 poetry run uvicorn tenderai_bf.api.main:app --reload --port 8000
-poetry run python -m tenderai_bf.ui.app   # Gradio UI :7860
 make scheduler                             # APScheduler daemon
 ```
 

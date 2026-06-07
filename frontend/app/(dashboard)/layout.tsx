@@ -22,7 +22,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const fixedCountryId = isSuperAdmin ? null : (payload.country_id ?? null);
 
   return (
-    <CountryProvider isSuperAdmin={isSuperAdmin} fixedCountryId={fixedCountryId}>
+    <CountryProvider isSuperAdmin={isSuperAdmin} fixedCountryId={fixedCountryId} role={payload.role}>
       <div className="flex min-h-screen">
         <Sidebar role={payload.role} username={payload.sub} />
         <main className="flex-1 p-6 bg-slate-50">{children}</main>

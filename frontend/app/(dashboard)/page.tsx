@@ -1,39 +1,90 @@
-import { cookies } from "next/headers";
+"use client";
 
-export const dynamic = "force-dynamic";
-import { jwtVerify } from "jose";
-import { api } from "@/lib/api";
+import { useEffect, useState } from "react";
+import { useCountry } from "@/contexts/country-context";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import type { RunItem } from "@/lib/api";
 
-const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET ?? "");
-
-async function getTokenAndRole() {
-  const token = (await cookies()).get("auth_token")?.value ?? "";
-  const { payload } = await jwtVerify(token, JWT_SECRET);
-  return { token, role: payload.role as string };
+interface HealthData {
+  status: string;
+  components: Record<string, { status: string }>;
 }
 
-export default async function DashboardPage() {
-  const { token, role } = await getTokenAndRole();
-  const [health, runsData] = await Promise.all([
-    api.getHealth().catch(() => ({ status: "error", components: {} as Record<string, { status: string }> })),
-    api.getRuns(token).catch(() => ({ runs: [] })),
-  ]);
+export default function DashboardPage() {
+  const { selectedCountry, role } = useCountry();
+  const [health, setHealth] = useState<HealthData | null>(null);
+  const [runs, setRuns] = useState<RunItem[]>([]);
+  const [triggering, setTriggering] = useState(false);
+  const [triggerMsg, setTriggerMsg] = useState("");
+
+  useEffect(() => {
+    fetch("/api/proxy/health")
+      .then((r) => r.json())
+      .then(setHealth)
+      .catch(() => setHealth({ status: "error", components: {} }));
+  }, []);
+
+  useEffect(() => {
+    if (!selectedCountry) return;
+    const params = new URLSearchParams({
+      country_id: String(selectedCountry.id),
+      page: "1",
+      page_size: "10",
+    });
+    fetch(`/api/proxy/runs?${params}`)
+      .then((r) => r.json())
+      .then((data) => setRuns(data.runs ?? []))
+      .catch(() => setRuns([]));
+  }, [selectedCountry?.id]);
+
+  async function handleTriggerRun() {
+    if (!selectedCountry) return;
+    setTriggering(true);
+    setTriggerMsg("");
+    try {
+      const res = await fetch(`/api/proxy/countries/${selectedCountry.id}/run`, {
+        method: "POST",
+      });
+      if (res.ok) {
+        setTriggerMsg("Pipeline lancé avec succès !");
+        setTimeout(() => {
+          const params = new URLSearchParams({
+            country_id: String(selectedCountry.id),
+            page: "1",
+            page_size: "10",
+          });
+          fetch(`/api/proxy/runs?${params}`)
+            .then((r) => r.json())
+            .then((data) => setRuns(data.runs ?? []));
+        }, 2000);
+      } else {
+        setTriggerMsg("Erreur lors du lancement du pipeline.");
+      }
+    } finally {
+      setTriggering(false);
+    }
+  }
+
+  const canTrigger = role === "super_admin" || role === "admin";
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Dashboard</h1>
-        {role === "admin" && (
-          <form action="/api/runs/trigger" method="POST">
+        {canTrigger && selectedCountry && (
+          <div className="flex items-center gap-3">
+            {triggerMsg && (
+              <span className="text-sm text-slate-600">{triggerMsg}</span>
+            )}
             <button
-              type="submit"
-              className="px-4 py-2 bg-blue-600 text-white rounded-md text-sm hover:bg-blue-700 transition-colors"
+              onClick={handleTriggerRun}
+              disabled={triggering}
+              className="px-4 py-2 bg-blue-600 text-white rounded-md text-sm hover:bg-blue-700 transition-colors disabled:opacity-50"
             >
-              Lancer maintenant
+              {triggering ? "Lancement…" : "Lancer maintenant"}
             </button>
-          </form>
+          </div>
         )}
       </div>
 
@@ -43,12 +94,12 @@ export default async function DashboardPage() {
             <CardTitle className="text-sm">Système</CardTitle>
           </CardHeader>
           <CardContent>
-            <Badge variant={health.status === "healthy" ? "default" : "destructive"}>
-              {health.status}
+            <Badge variant={health?.status === "healthy" ? "default" : "destructive"}>
+              {health?.status ?? "…"}
             </Badge>
           </CardContent>
         </Card>
-        {Object.entries(health.components ?? {}).map(([name, comp]) => (
+        {Object.entries(health?.components ?? {}).map(([name, comp]) => (
           <Card key={name}>
             <CardHeader>
               <CardTitle className="text-sm capitalize">{name}</CardTitle>
@@ -64,7 +115,9 @@ export default async function DashboardPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Runs récents</CardTitle>
+          <CardTitle>
+            Runs récents{selectedCountry ? ` — ${selectedCountry.name}` : ""}
+          </CardTitle>
         </CardHeader>
         <CardContent>
           <table className="w-full text-sm">
@@ -78,7 +131,7 @@ export default async function DashboardPage() {
               </tr>
             </thead>
             <tbody>
-              {runsData.runs.map((run) => (
+              {runs.map((run) => (
                 <tr key={run.run_id} className="border-b last:border-0">
                   <td className="py-2 font-mono text-xs">{run.run_id.slice(0, 8)}…</td>
                   <td>
@@ -101,7 +154,7 @@ export default async function DashboardPage() {
                   <td>{run.stats?.relevant_items ?? 0}</td>
                 </tr>
               ))}
-              {runsData.runs.length === 0 && (
+              {runs.length === 0 && (
                 <tr>
                   <td colSpan={5} className="py-4 text-slate-400 text-center">
                     Aucun run disponible
