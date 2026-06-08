@@ -170,6 +170,7 @@ jobs:
             
             # Pull latest code
             echo "📥 Pulling latest code..."
+            git checkout main
             git pull origin main
             
             # Debug: Verify alembic.ini has correct format
@@ -418,6 +419,7 @@ jobs:
             cd \${DEPLOY_PATH}
             
             # Pull latest code
+            git checkout develop
             git pull origin develop
             
             # Copy production override file (no port exposures)
