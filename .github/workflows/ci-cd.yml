@@ -500,11 +500,14 @@ jobs:
     if: |
       needs.build-and-push.result == 'success' &&
       (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+    permissions:
+      security-events: write
+      contents: read
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      
+
       - name: Set lowercase owner name
         id: lowercase
         run: echo "owner=$(echo ${{ github.repository_owner }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
@@ -517,6 +520,6 @@ jobs:
           output: 'trivy-results.sarif'
 
       - name: Upload Trivy results to GitHub Security
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: 'trivy-results.sarif'
