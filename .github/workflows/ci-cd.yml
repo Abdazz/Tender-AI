@@ -182,27 +182,18 @@ jobs:
             grep "version_num_format" alembic.ini || echo "version_num_format not found"
             grep "format.*levelname" alembic.ini || echo "format line not found"
             
-            # Setup production environment - comment out port mappings in .env
+            # Setup production environment
             echo "📝 Configuring production environment..."
             # Copy unified server override (parameterized via .env.prod)
             cp docker-compose.server.yml docker-compose.override.yml
-            
-            if [ -f ".env" ]; then
-              # Comment out port mappings to prevent exposure
-              sed -i 's/^POSTGRES_PORT=/#POSTGRES_PORT=/' .env
-              sed -i 's/^MINIO_PORT=/#MINIO_PORT=/' .env
-              sed -i 's/^MINIO_CONSOLE_PORT=/#MINIO_CONSOLE_PORT=/' .env
-              sed -i 's/^API_PORT=/#API_PORT=/' .env
-              sed -i 's/^UI_PORT=/#UI_PORT=/' .env
-              # Fix cron expressions
-              sed -i 's/^CRON_SCHEDULE=\([^"]\)/CRON_SCHEDULE="\1/' .env
-              sed -i 's/^\(CRON_SCHEDULE="[^"]*\)$/\1"/' .env
-              sed -i 's/^BACKUP_SCHEDULE=\([^"]\)/BACKUP_SCHEDULE="\1/' .env
-              sed -i 's/^\(BACKUP_SCHEDULE="[^"]*\)$/\1"/' .env
-              # Inject security credentials from GitHub Secrets
-              sed -i "s|^TENDERAI_JWT_SECRET=.*|TENDERAI_JWT_SECRET=${TENDERAI_JWT_SECRET}|" .env
-              sed -i "s|^TENDERAI_ADMIN_PASSWORD=.*|TENDERAI_ADMIN_PASSWORD=${TENDERAI_ADMIN_PASSWORD}|" .env
-            fi
+
+            # .env.prod is the single source of truth for production.
+            # Symlink .env → .env.prod so docker-compose env_file: .env works.
+            ln -sf .env.prod .env
+
+            # Inject security credentials from GitHub Secrets into .env.prod
+            sed -i "s|^TENDERAI_JWT_SECRET=.*|TENDERAI_JWT_SECRET=${TENDERAI_JWT_SECRET}|" .env.prod
+            sed -i "s|^TENDERAI_ADMIN_PASSWORD=.*|TENDERAI_ADMIN_PASSWORD=${TENDERAI_ADMIN_PASSWORD}|" .env.prod
             
             # Login to GitHub Container Registry
             echo "🔐 Logging in to registry..."
