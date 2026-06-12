@@ -187,6 +187,9 @@ jobs:
             # Copy unified server override (services lisent .env.prod via env_file: .env.${ENV_NAME})
             cp docker-compose.server.yml docker-compose.override.yml
 
+            # Ensure .env exists (base compose requires it; actual vars come from .env.prod via server override)
+            touch .env
+
             # Inject security credentials from GitHub Secrets into .env.prod
             sed -i "s|^TENDERAI_JWT_SECRET=.*|TENDERAI_JWT_SECRET=${TENDERAI_JWT_SECRET}|" .env.prod
             sed -i "s|^TENDERAI_ADMIN_PASSWORD=.*|TENDERAI_ADMIN_PASSWORD=${TENDERAI_ADMIN_PASSWORD}|" .env.prod
@@ -417,6 +420,9 @@ jobs:
 
             # Copy unified server override (services lisent .env.staging via env_file: .env.${ENV_NAME})
             cp docker-compose.server.yml docker-compose.override.yml
+
+            # Ensure .env exists (base compose requires it; actual vars come from .env.staging via server override)
+            touch .env
 
             # Inject security credentials from GitHub Secrets into .env.staging
             sed -i "s|^TENDERAI_JWT_SECRET=.*|TENDERAI_JWT_SECRET=${TENDERAI_JWT_SECRET}|" .env.staging
