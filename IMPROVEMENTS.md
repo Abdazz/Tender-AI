@@ -10,9 +10,10 @@ Tracking file for planned improvements to the TenderAI BF system.
 
 | # | Title | Status | Notes |
 |---|-------|--------|-------|
-| 1 | [Multi-country pipeline support](#1-multi-country-pipeline-support) | `planned` | |
-| 2 | [Database-persisted configuration](#2-database-persisted-configuration) | `planned` | Architecture decision pending |
-| 3 | [Settings management module (admin dashboard)](#3-settings-management-module-admin-dashboard) | `planned` | Depends on #2 |
+| 1 | [Multi-country pipeline support](#1-multi-country-pipeline-support) | ✅ `done` | |
+| 2 | [Database-persisted configuration](#2-database-persisted-configuration) | ✅ `done` | |
+| 3 | [Settings management module (admin dashboard)](#3-settings-management-module-admin-dashboard) | ✅ `done` | Depends on #2 |
+| 4 | [Intégration Tavily comme parser web](#4-intégration-tavily-comme-parser-web) | ✅ `done` | Fetcher générique pour nouvelles sources web |
 
 ---
 
@@ -20,7 +21,7 @@ Tracking file for planned improvements to the TenderAI BF system.
 
 ### 1. Multi-country pipeline support
 
-**Status:** `planned`
+**Status:** `done`
 
 The pipeline is currently global (single instance, single set of sources). Add a first-class `Country` entity so that each country has its own set of tender sources, LLM prompts, scheduling configuration, and notification recipients. Running the pipeline for country X must be fully isolated from country Y — separate `Run` records, separate `Notice` tables (or a country FK), separate reports and email recipients.
 
@@ -41,7 +42,7 @@ The pipeline is currently global (single instance, single set of sources). Add a
 
 ### 2. Database-persisted configuration
 
-**Status:** `planned`
+**Status:** `done`
 
 Today all configuration lives in `settings.yaml` and environment variables, requiring a file edit + service restart to change anything at runtime. Persist mutable operational settings (sources, prompts, schedules, relevance thresholds, email targets) in the database so they can be updated through the admin API without restarting services.
 
@@ -68,7 +69,7 @@ Option B is preferred: simpler at runtime, avoids silent divergence between file
 
 ### 3. Settings management module (admin dashboard)
 
-**Status:** `planned`
+**Status:** `done`
 **Depends on:** #2 (Database-persisted configuration)
 
 Replace the current read-only JSON dump at `/settings` with a structured, editable settings UI. Settings are grouped by section with inline editing, validation, and save per section. Secrets and infrastructure URLs (database, MinIO, SMTP credentials) remain read-only in the UI — they are managed via environment variables only.
@@ -85,3 +86,24 @@ Replace the current read-only JSON dump at `/settings` with a structured, editab
 **Open questions:**
 - Which sections are safe to hot-reload vs. require a service restart (e.g. scheduler cron changes)?
 - Should keyword lists (classification) have a dedicated tag-input component or a plain textarea?
+
+---
+
+### 4. Intégration Tavily comme parser web
+
+**Status:** ✅ `done`
+
+Les fetchers actuels (`fetch_bceao.py`, `fetch_joffres.py`, `fetch_quotidien.py`, etc.) sont tous des scrapers HTML custom, difficiles à maintenir et fragiles face aux changements de structure de page. Tavily est une API de recherche et d'extraction web conçue pour les agents LLM : elle retourne du contenu structuré, suit les liens, et gère le rendu JS sans configuration manuelle.
+
+L'idée est de disposer d'un fetcher générique basé sur Tavily pour toute nouvelle source de type `web` ajoutée à l'avenir, sans avoir à écrire un scraper custom. Les fetchers existants (`fetch_bceao.py`, `fetch_joffres.py`, `fetch_quotidien.py`, `fetch_ungm.py`) sont conservés tels quels.
+
+**Scope includes:**
+- `fetch_tavily.py` : fetcher générique qui prend une URL de source, interroge Tavily (`/search` ou `/extract`), et retourne une liste normalisée de notices brutes compatibles avec `TenderAIState`
+- Marquage des sources dans la DB avec un champ `fetcher_type` (ex. `custom`, `tavily`) pour que le pipeline sache quel fetcher instancier
+- Paramétrage par source : profondeur de crawl, domaines autorisés, requête de recherche optionnelle
+- Gestion de la clé API Tavily via env var `TAVILY_API_KEY`
+- Tests d'intégration mockant l'API Tavily
+
+**Open questions:**
+- Tavily `/extract` (extraction ciblée d'URL) vs `/search` (recherche + extraction) : lequel utiliser selon le type de source ?
+- Coût par requête Tavily : comment limiter les appels redondants (cache, dedup par URL) ?

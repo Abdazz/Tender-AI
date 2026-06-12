@@ -21,6 +21,8 @@ interface Props {
   /** Custom trigger element; defaults to a "Nouvelle source" button. */
   trigger?: React.ReactElement;
   onSaved: () => void;
+  /** When provided, new sources will be associated with this country. */
+  countryId?: number;
 }
 
 const PARSER_TYPES = [
@@ -32,6 +34,8 @@ const PARSER_TYPES = [
   "pdf_quotidien",
   "ungm",
   "google_search",
+  "tavily_search",
+  "tavily_extract",
 ] as const;
 
 const empty = {
@@ -41,9 +45,10 @@ const empty = {
   parser_type: "html",
   rate_limit: "10/m",
   enabled: true,
+  queries: "",
 };
 
-export function SourceFormDialog({ source, trigger, onSaved }: Props) {
+export function SourceFormDialog({ source, trigger, onSaved, countryId }: Props) {
   const isEdit = !!source;
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ ...empty });
@@ -62,6 +67,9 @@ export function SourceFormDialog({ source, trigger, onSaved }: Props) {
               parser_type: source.parser_type,
               rate_limit: source.rate_limit,
               enabled: source.enabled,
+              queries:
+                (source.patterns?.queries as string[] | undefined)
+                  ?.join("\n") ?? "",
             }
           : { ...empty }
       );
@@ -84,10 +92,20 @@ export function SourceFormDialog({ source, trigger, onSaved }: Props) {
     const method = isEdit ? "PUT" : "POST";
 
     try {
+      const { queries, ...formWithoutQueries } = form;
+      const patterns =
+        form.parser_type === "tavily_search"
+          ? { queries: queries.split("\n").map((q) => q.trim()).filter(Boolean) }
+          : undefined;
+
+      const payload = isEdit
+        ? { ...formWithoutQueries, patterns }
+        : { ...formWithoutQueries, patterns, ...(countryId !== undefined ? { country_id: countryId } : {}) };
+
       const res = await fetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify(payload),
       });
       if (!res.ok) {
         const data = await res.json();
@@ -183,6 +201,25 @@ export function SourceFormDialog({ source, trigger, onSaved }: Props) {
               />
             </div>
           </div>
+
+          {form.parser_type === "tavily_search" && (
+            <div className="space-y-2">
+              <Label htmlFor="src-queries">
+                Requêtes de recherche
+                <span className="ml-1 text-xs text-slate-500 font-normal">
+                  (une par ligne)
+                </span>
+              </Label>
+              <textarea
+                id="src-queries"
+                value={form.queries}
+                onChange={(e) => set("queries", e.target.value)}
+                rows={4}
+                placeholder={"appel offres informatique site:achatscanada.canada.ca\nIT tender procurement Canada federal"}
+                className="w-full border border-input rounded-md px-3 py-2 text-sm bg-background resize-y min-h-[96px]"
+              />
+            </div>
+          )}
 
           <div className="flex items-center gap-2">
             <input

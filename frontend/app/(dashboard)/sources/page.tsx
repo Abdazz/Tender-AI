@@ -6,9 +6,11 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { SourceFormDialog } from "@/components/sources/source-form-dialog";
 import { DeleteSourceDialog } from "@/components/sources/delete-source-dialog";
+import { useCountry } from "@/contexts/country-context";
 import type { SourceOut } from "@/lib/api";
 
 export default function SourcesPage() {
+  const { selectedCountry } = useCountry();
   const [sources, setSources] = useState<SourceOut[]>([]);
   const [loading, setLoading] = useState(true);
   const [testResults, setTestResults] = useState<Record<number, string>>({});
@@ -16,7 +18,8 @@ export default function SourcesPage() {
   async function loadSources() {
     setLoading(true);
     try {
-      const res = await fetch("/api/proxy/sources");
+      const params = selectedCountry ? `?country_id=${selectedCountry.id}` : "";
+      const res = await fetch(`/api/proxy/sources${params}`);
       if (res.ok) {
         const data = await res.json();
         setSources(data.sources ?? []);
@@ -28,7 +31,7 @@ export default function SourcesPage() {
 
   useEffect(() => {
     loadSources();
-  }, []);
+  }, [selectedCountry?.id]); // reload when country changes
 
   async function handleTest(source: SourceOut) {
     setTestResults((prev) => ({ ...prev, [source.id]: "..." }));
@@ -57,7 +60,7 @@ export default function SourcesPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Sources</h1>
-        <SourceFormDialog onSaved={loadSources} />
+        <SourceFormDialog onSaved={loadSources} countryId={selectedCountry?.id} />
       </div>
 
       <Card>

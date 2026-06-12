@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-TenderAI BF is a multi-agent RFP/tender harvester for Burkina Faso. It autonomously scrapes procurement portals, classifies opportunities using AI, deduplicates them, generates French-language DOCX reports, and delivers them via email. Stack: Python 3.11+, LangGraph, FastAPI, Gradio, PostgreSQL, MinIO, APScheduler.
+TenderAI BF is a multi-agent RFP/tender harvester for Burkina Faso. It autonomously scrapes procurement portals, classifies opportunities using AI, deduplicates them, generates French-language DOCX reports, and delivers them via email. Stack: Python 3.11+, LangGraph, FastAPI, Next.js (React frontend), PostgreSQL, MinIO, APScheduler.
 
 ## Commands
 
@@ -39,13 +39,12 @@ make test-email                  # verify SMTP config
 
 # Start services
 poetry run uvicorn tenderai_bf.api.main:app --reload --port 8000
-poetry run python -m tenderai_bf.ui.app    # Gradio UI on :7860
 make scheduler                   # APScheduler daemon
 
 # Docker
 make up                          # all services
 make down
-make logs-api / logs-ui / logs-worker
+make logs-api / logs-worker
 make rebuild                     # down + build --no-cache + up
 ```
 
@@ -54,7 +53,7 @@ make rebuild                     # down + build --no-cache + up
 ### Layer structure
 
 ```
-FastAPI (:8000) / Gradio UI (:7860)
+Next.js frontend (:3000) → FastAPI (:8000)
        ↓
 LangGraph pipeline (agents/graph.py)
        ↓
@@ -89,7 +88,6 @@ Tests must pre-set these env vars before importing config—see `tests/conftest.
 | `agents/nodes/deduplicate.py` | Configurable strategy via `processing.deduplication_method`: `hash_only`, `similarity_only`, `hash_similarity`, `llm_only`, `hybrid` |
 | `agents/nodes/parse_pdf_rag.py` / `vector_store.py` | RAG pipeline using ChromaDB + sentence-transformers for PDF tender extraction |
 | `api/main.py` | FastAPI app; JWT auth via `TENDERAI_JWT_SECRET`; routers under `/api/v1/` |
-| `ui/app.py` | Gradio dashboard for manual runs, source config, history |
 | `scheduler/schedule.py` | APScheduler daemon (default cron: `0 7 * * *` Africa/Ouagadougou) |
 | `report/docx_report.py` | Generates branded `.docx` report uploaded to MinIO |
 | `storage/minio_client.py` | S3-compatible MinIO wrapper |

@@ -24,6 +24,7 @@ on:
       - 'v*'
     branches:
       - main
+      - staging
       - develop
     paths-ignore:
       - '**.md'
@@ -124,9 +125,12 @@ jobs:
           ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
 
       - name: Add server to known hosts
+        env:
+          HOST: ${{ secrets.PRODUCTION_HOST }}
+          PORT: ${{ secrets.PRODUCTION_SSH_PORT || 22 }}
         run: |
           mkdir -p ~/.ssh
-          ssh-keyscan -H ${{ secrets.PRODUCTION_HOST }} >> ~/.ssh/known_hosts
+          ssh-keyscan -H -p ${PORT} ${HOST} >> ~/.ssh/known_hosts
 
       - name: Deploy to production server
         env:
@@ -180,8 +184,8 @@ jobs:
             
             # Setup production environment - comment out port mappings in .env
             echo "📝 Configuring production environment..."
-            # Copy production override (no port exposures)
-            cp docker-compose.override.prod.yml docker-compose.override.yml
+            # Copy unified server override (parameterized via .env.prod)
+            cp docker-compose.server.yml docker-compose.override.yml
             
             if [ -f ".env" ]; then
               # Comment out port mappings to prevent exposure
@@ -204,12 +208,12 @@ jobs:
             echo "🔐 Logging in to registry..."
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
             
-            # Set environment to production
-            export ENVIRONMENT=production
-            
+            # Load orchestration variables (ENV_NAME, IMAGE_TAG, COMPOSE_PROJECT_NAME, etc.)
+            set -a; source .env.prod; set +a
+
             # Stop all services first (--remove-orphans stops renamed/deleted services like old tenderai-ui)
             echo "🛑 Stopping existing services..."
-            docker compose down --remove-orphans || true
+            docker compose --env-file .env.prod down --remove-orphans || true
             
             # Ensure logs directory has correct permissions
             echo "🔧 Setting up logs directory..."
@@ -223,18 +227,16 @@ jobs:
             
             # Pull latest images (use pre-built images from registry)
             echo "🐳 Pulling Docker images..."
-            docker compose pull api frontend worker || true
-            
-            # Verify the api image is available (abort if never built)
-            if ! docker image inspect ghcr.io/abdazz/tenderai-bf-api:latest > /dev/null 2>&1; then
-              echo "❌ API image not found locally or in registry."
-              echo "   Trigger a build first: push a commit with '[build]' in the message,"
-              echo "   push a 'v*' tag, or run the workflow manually with skip_build=false."
+            docker compose --env-file .env.prod pull api frontend worker || true
+
+            # Verify images are available (tag comes from .env.prod IMAGE_TAG)
+            if ! docker image inspect ghcr.io/abdazz/tenderai-bf-api:\${IMAGE_TAG} > /dev/null 2>&1; then
+              echo "❌ API image (tag: \${IMAGE_TAG}) not found. Trigger a build first."
               exit 1
             fi
-            echo "✅ API image available: \$(docker image inspect ghcr.io/abdazz/tenderai-bf-api:latest --format '{{.Id}}' | cut -c1-19)"
-            if ! docker image inspect ghcr.io/abdazz/tenderai-bf-frontend:latest > /dev/null 2>&1; then
-              echo "❌ Frontend image not found. Run workflow manually with skip_build=false."
+            echo "✅ API image available: \$(docker image inspect ghcr.io/abdazz/tenderai-bf-api:\${IMAGE_TAG} --format '{{.Id}}' | cut -c1-19)"
+            if ! docker image inspect ghcr.io/abdazz/tenderai-bf-frontend:\${IMAGE_TAG} > /dev/null 2>&1; then
+              echo "❌ Frontend image (tag: \${IMAGE_TAG}) not found. Run workflow manually with skip_build=false."
               exit 1
             fi
             
@@ -244,11 +246,11 @@ jobs:
             
             # Start dependencies first (PostgreSQL, MinIO)
             echo "🗄️ Starting dependencies..."
-            docker compose up -d postgres minio createbuckets
-            
+            docker compose --env-file .env.prod up -d postgres minio createbuckets
+
             # Wait for PostgreSQL to be ready
             echo "⏳ Waiting for database to be ready..."
-            until docker compose exec -T postgres pg_isready -U \${POSTGRES_USER:-tenderai} -d \${POSTGRES_DB:-tenderai_bf} </dev/null; do
+            until docker compose --env-file .env.prod exec -T postgres pg_isready -U \${POSTGRES_USER:-tenderai} -d \${POSTGRES_DB:-tenderai_bf} </dev/null; do
               echo "  Waiting for postgres..."
               sleep 3
             done
@@ -257,13 +259,13 @@ jobs:
             # Wait for MinIO to be ready (healthcheck interval is 30s; must be up before migrations)
             echo "⏳ Waiting for MinIO to be ready..."
             for minio_attempt in \$(seq 1 20); do
-              if docker compose exec -T minio curl -sf http://localhost:9000/minio/health/live </dev/null > /dev/null 2>&1; then
+              if docker compose --env-file .env.prod exec -T minio curl -sf http://localhost:9000/minio/health/live </dev/null > /dev/null 2>&1; then
                 echo "✅ MinIO is ready (attempt \${minio_attempt})"
                 break
               fi
               if [ \${minio_attempt} -eq 20 ]; then
                 echo "❌ MinIO did not become ready in time"
-                docker compose logs --tail=30 minio
+                docker compose --env-file .env.prod logs --tail=30 minio
                 exit 1
               fi
               echo "  Waiting for minio (attempt \${minio_attempt})..."
@@ -273,25 +275,25 @@ jobs:
             # Run database migrations before starting application services
             # --no-deps: we waited for dependencies manually above, skip docker-compose's health waits
             echo "🔄 Running database migrations..."
-            docker compose run --no-deps --rm api alembic upgrade head </dev/null || {
+            docker compose --env-file .env.prod run --no-deps --rm api alembic upgrade head </dev/null || {
               echo "❌ Migration failed"
               echo "--- postgres logs ---"
-              docker compose logs --tail=30 postgres
+              docker compose --env-file .env.prod logs --tail=30 postgres
               echo "--- api container logs ---"
-              docker compose logs --tail=30 api
+              docker compose --env-file .env.prod logs --tail=30 api
               exit 1
             }
             echo "✅ Migrations applied"
 
             # Ensure the admin user exists (idempotent: skips if already present)
             echo "👤 Ensuring admin user exists..."
-            docker compose run --no-deps --rm api tenderai create-admin </dev/null && \
+            docker compose --env-file .env.prod run --no-deps --rm api tenderai create-admin </dev/null && \
               echo "✅ Admin user ready" || \
               echo "⚠️  create-admin exited non-zero (check TENDERAI_ADMIN_PASSWORD is set)"
 
             # Seed sources from settings.yaml into the database (idempotent: skips existing)
             echo "🌱 Seeding sources..."
-            docker compose run --no-deps --rm api tenderai seed-sources </dev/null && \
+            docker compose --env-file .env.prod run --no-deps --rm api tenderai seed-sources </dev/null && \
               echo "✅ Sources seeded" || \
               echo "⚠️  seed-sources exited non-zero"
 
@@ -299,28 +301,28 @@ jobs:
             # running "up -d --remove-orphans" over the whole project can recreate them
             # (config hash change) which resets their health state and blocks the api.
             echo "🚀 Starting application services..."
-            docker compose up -d api frontend worker nginx
+            docker compose --env-file .env.prod up -d api frontend worker nginx
 
             # Immediate status after start
             echo "📊 Container status (t+0):"
-            docker compose ps
+            docker compose --env-file .env.prod ps
             echo "📋 API logs immediately after start:"
-            docker compose logs --tail=30 api
+            docker compose --env-file .env.prod logs --tail=30 api
 
             # Wait for API to be healthy before declaring success (up to 3 minutes)
             echo "⏳ Waiting for API to become healthy..."
             for i in \$(seq 1 18); do
               echo "  [attempt \$i/18] docker compose ps api:"
-              docker compose ps api
-              if docker compose exec -T api curl -sf http://localhost:8000/health </dev/null > /dev/null 2>&1; then
+              docker compose --env-file .env.prod ps api
+              if docker compose --env-file .env.prod exec -T api curl -sf http://localhost:8000/health </dev/null > /dev/null 2>&1; then
                 echo "✅ API is healthy on attempt \$i"
                 break
               fi
               if [ \$i -eq 18 ]; then
                 echo "❌ API did not become healthy after 3 minutes — full logs:"
-                docker compose logs --tail=100 api
-                docker compose logs --tail=30 postgres
-                docker compose logs --tail=30 minio
+                docker compose --env-file .env.prod logs --tail=100 api
+                docker compose --env-file .env.prod logs --tail=30 postgres
+                docker compose --env-file .env.prod logs --tail=30 minio
                 exit 1
               fi
               echo "  Attempt \$i: API not ready, waiting 10s..."
@@ -345,16 +347,17 @@ jobs:
             DEPLOY_PATH="${DEPLOY_PATH}" \
             'bash -s' << 'HEALTHEOF'
             cd "${DEPLOY_PATH}"
+            set -a; source .env.prod; set +a
             echo '=== Final container status ==='
-            docker compose ps
+            docker compose --env-file .env.prod ps
             for i in $(seq 1 6); do
-              if docker compose exec -T api curl -sf http://localhost:8000/health > /dev/null 2>&1; then
+              if docker compose --env-file .env.prod exec -T api curl -sf http://localhost:8000/health > /dev/null 2>&1; then
                 echo "✅ API OK (attempt $i)"
                 exit 0
               fi
               if [ $i -eq 6 ]; then
                 echo "❌ API down after $((i * 10))s — last logs:"
-                docker compose logs --tail=50 api
+                docker compose --env-file .env.prod logs --tail=50 api
                 exit 1
               fi
               echo "  Attempt $i: API not ready, waiting 10s..."
@@ -381,12 +384,12 @@ jobs:
       always() &&
       (needs.build-and-push.result == 'success' || needs.build-and-push.result == 'skipped') &&
       (
-        github.ref == 'refs/heads/develop' ||
+        github.ref == 'refs/heads/staging' ||
         (github.event_name == 'workflow_dispatch' && (inputs.environment == 'staging' || inputs.environment == 'both'))
       )
     environment:
       name: staging
-      url: https://staging.tender-ai.yulcom.net
+      url: https://stagingtenderai.yulcom.net
 
     steps:
       - name: Checkout code
@@ -398,15 +401,18 @@ jobs:
           ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
 
       - name: Add server to known hosts
+        env:
+          HOST: ${{ secrets.PRODUCTION_HOST }}
+          PORT: ${{ secrets.PRODUCTION_SSH_PORT || 22 }}
         run: |
           mkdir -p ~/.ssh
-          ssh-keyscan -H ${{ secrets.STAGING_HOST }} >> ~/.ssh/known_hosts
+          ssh-keyscan -H -p ${PORT} ${HOST} >> ~/.ssh/known_hosts
 
       - name: Deploy to staging server
         env:
-          HOST: ${{ secrets.STAGING_HOST }}
-          USER: ${{ secrets.STAGING_USER }}
-          PORT: ${{ secrets.STAGING_SSH_PORT || 22 }}
+          HOST: ${{ secrets.PRODUCTION_HOST }}
+          USER: ${{ secrets.PRODUCTION_USER }}
+          PORT: ${{ secrets.PRODUCTION_SSH_PORT || 22 }}
           DEPLOY_PATH: ${{ secrets.STAGING_DEPLOY_PATH || '/opt/tenderai-bf-staging' }}
           TENDERAI_JWT_SECRET: ${{ secrets.TENDERAI_JWT_SECRET }}
           TENDERAI_ADMIN_PASSWORD: ${{ secrets.TENDERAI_ADMIN_PASSWORD }}
@@ -417,79 +423,75 @@ jobs:
             DEPLOY_PATH="${DEPLOY_PATH}"
             
             cd \${DEPLOY_PATH}
-            
+
             # Pull latest code
-            git checkout develop
-            git pull origin develop
-            
-            # Copy production override file (no port exposures)
-            cp docker-compose.override.prod.yml docker-compose.override.yml
-            
-            # Setup staging environment
-            if [ -f ".env" ]; then
-              sed -i 's/^POSTGRES_PORT=/#POSTGRES_PORT=/' .env
-              sed -i 's/^MINIO_PORT=/#MINIO_PORT=/' .env
-              sed -i 's/^MINIO_CONSOLE_PORT=/#MINIO_CONSOLE_PORT=/' .env
-              sed -i 's/^API_PORT=/#API_PORT=/' .env
-              sed -i 's/^UI_PORT=/#UI_PORT=/' .env
-              # Inject security credentials from GitHub Secrets
-              sed -i "s|^TENDERAI_JWT_SECRET=.*|TENDERAI_JWT_SECRET=${TENDERAI_JWT_SECRET}|" .env
-              sed -i "s|^TENDERAI_ADMIN_PASSWORD=.*|TENDERAI_ADMIN_PASSWORD=${TENDERAI_ADMIN_PASSWORD}|" .env
-            fi
-            
+            git config pull.ff only
+            git pull origin staging
+
+            # Copy unified server override (parameterized via .env.staging)
+            cp docker-compose.server.yml docker-compose.override.yml
+
+            # .env.staging is the single source of truth for staging.
+            # Symlink .env → .env.staging so docker-compose service env_file: .env works.
+            ln -sf .env.staging .env
+
+            # Inject security credentials from GitHub Secrets into .env.staging
+            sed -i "s|^TENDERAI_JWT_SECRET=.*|TENDERAI_JWT_SECRET=${TENDERAI_JWT_SECRET}|" .env.staging
+            sed -i "s|^TENDERAI_ADMIN_PASSWORD=.*|TENDERAI_ADMIN_PASSWORD=${TENDERAI_ADMIN_PASSWORD}|" .env.staging
+
             # Login to GitHub Container Registry
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-            
-            # Set environment to staging
-            export ENVIRONMENT=staging
-            
+
+            # Load orchestration variables (ENV_NAME, IMAGE_TAG, COMPOSE_PROJECT_NAME, etc.)
+            set -a; source .env.staging; set +a
+
             # Stop all services (--remove-orphans cleans up renamed/deleted services)
-            docker compose down --remove-orphans || true
+            docker compose --env-file .env.staging down --remove-orphans || true
 
             # Pull latest images (use pre-built images from registry)
-            docker compose pull api frontend worker || true
+            docker compose --env-file .env.staging pull api frontend worker || true
 
             # Start dependencies first (PostgreSQL, MinIO)
-            docker compose up -d postgres minio createbuckets
+            docker compose --env-file .env.staging up -d postgres minio createbuckets
 
             # Wait for PostgreSQL to be ready
-            until docker compose exec -T postgres pg_isready -U \${POSTGRES_USER:-tenderai} -d \${POSTGRES_DB:-tenderai_bf} </dev/null; do
+            until docker compose --env-file .env.staging exec -T postgres pg_isready -U \${POSTGRES_USER:-tenderai} -d \${POSTGRES_DB:-tenderai_bf} </dev/null; do
               sleep 3
             done
 
             # Wait for MinIO to be ready
             for minio_attempt in \$(seq 1 20); do
-              if docker compose exec -T minio curl -sf http://localhost:9000/minio/health/live </dev/null > /dev/null 2>&1; then
+              if docker compose --env-file .env.staging exec -T minio curl -sf http://localhost:9000/minio/health/live </dev/null > /dev/null 2>&1; then
                 break
               fi
-              [ \${minio_attempt} -eq 20 ] && { docker compose logs --tail=30 minio; exit 1; }
+              [ \${minio_attempt} -eq 20 ] && { docker compose --env-file .env.staging logs --tail=30 minio; exit 1; }
               sleep 5
             done
 
             # Run database migrations before starting application services
-            docker compose run --no-deps --rm api alembic upgrade head </dev/null || {
+            docker compose --env-file .env.staging run --no-deps --rm api alembic upgrade head </dev/null || {
               echo "Migration failed, checking postgres logs..."
-              docker compose logs --tail=50 postgres
+              docker compose --env-file .env.staging logs --tail=50 postgres
               exit 1
             }
 
             # Ensure admin user and seed sources (both idempotent)
-            docker compose run --no-deps --rm api tenderai create-admin </dev/null || true
-            docker compose run --no-deps --rm api tenderai seed-sources </dev/null || true
+            docker compose --env-file .env.staging run --no-deps --rm api tenderai create-admin </dev/null || true
+            docker compose --env-file .env.staging run --no-deps --rm api tenderai seed-sources </dev/null || true
             
-            # Start all services
-            docker compose up -d
-            
+            # Start application services (nginx proxied by Apache on port 19443)
+            docker compose --env-file .env.staging up -d api frontend worker nginx
+
             # Clean up old images
             docker image prune -f
-            
+
             echo "Staging deployment completed successfully"
           ENDSSH
 
       - name: Health check
         run: |
           sleep 30
-          curl -f https://staging.tender-ai.yulcom.net/health || exit 1
+          curl -f https://stagingtenderai.yulcom.net/health || exit 1
 
   # Scan de sécurité
   security-scan:

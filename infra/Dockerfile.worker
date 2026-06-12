@@ -8,7 +8,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
-# Install system dependencies including OCR tools
+# Install system dependencies including OCR tools and Chromium deps for Playwright
 RUN apt-get update && apt-get install -y \
     curl \
     gcc \
@@ -24,6 +24,22 @@ RUN apt-get update && apt-get install -y \
     libxext6 \
     libxrender-dev \
     libgomp1 \
+    # Chromium system deps required by Playwright
+    libnss3 \
+    libnspr4 \
+    libatk1.0-0 \
+    libatk-bridge2.0-0 \
+    libcups2 \
+    libdrm2 \
+    libxkbcommon0 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxfixes3 \
+    libxrandr2 \
+    libgbm1 \
+    libasound2 \
+    libpango-1.0-0 \
+    libcairo2 \
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user
@@ -43,8 +59,12 @@ ENV POETRY_NO_INTERACTION=1 \
 # Copy dependency files
 COPY pyproject.toml poetry.lock* README.md ./
 
-# Install dependencies with full extras for OCR support
+# Install dependencies with full extras (includes playwright)
 RUN poetry install --only=main --extras "full" --no-root && rm -rf $POETRY_CACHE_DIR
+
+# Install Playwright Chromium to a fixed path accessible by the tenderai user
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+RUN playwright install chromium && chmod -R 755 /ms-playwright
 
 # Copy application code
 COPY src/ src/
@@ -53,7 +73,7 @@ COPY src/ src/
 RUN pip install -e .
 
 # Create necessary directories with proper permissions
-RUN mkdir -p logs cache temp reports /tmp/ocr && \
+RUN mkdir -p logs/nodes cache temp reports /tmp/ocr && \
     chmod -R 777 logs cache temp reports /tmp/ocr && \
     chown -R tenderai:tenderai /app /tmp/ocr
 
@@ -63,9 +83,9 @@ ENV TESSERACT_PATH=/usr/bin/tesseract
 # Switch to non-root user
 USER tenderai
 
-# Health check (worker doesn't expose HTTP port, so check process)
+# Health check (worker doesn't expose HTTP port, so check process via /proc)
 HEALTHCHECK --interval=60s --timeout=30s --start-period=120s --retries=3 \
-    CMD pgrep -f "python.*schedule" || exit 1
+    CMD python3 -c "import os,sys; sys.exit(0 if any('schedule' in open(f'/proc/{p}/cmdline','rb').read().decode(errors='ignore') for p in os.listdir('/proc') if p.isdigit()) else 1)"
 
 # Command to run scheduler (cron-based pipeline execution)
 CMD ["python", "-m", "tenderai_bf.cli", "run-scheduler"]

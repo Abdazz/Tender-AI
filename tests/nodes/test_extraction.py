@@ -1,7 +1,8 @@
 """Test extraction node independently."""
 
 import sys
-sys.path.insert(0, '/app/src')
+
+sys.path.insert(0, "/app/src")
 
 from tenderai_bf.agents.extraction import extract_tenders_structured
 
@@ -28,31 +29,30 @@ Les soumissionnaires doivent fournir :
 Contact : dmp@finances.gov.bf
 """
 
+
 def test_extraction():
     """Test tender extraction from sample text."""
-    
+
     print("=" * 80)
     print("TEST: Extraction de tenders")
     print("=" * 80)
-    
+
     print("\nTexte source (extrait) :")
     print("-" * 80)
     print(sample_text[:200] + "...")
     print("-" * 80)
-    
+
     print("\n🔄 Appel à extract_tenders_structured()...")
-    
+
     result = extract_tenders_structured(
-        context=sample_text,
-        source_name="TEST_SOURCE",
-        max_retries=2
+        context=sample_text, source_name="TEST_SOURCE", max_retries=2
     )
-    
-    print(f"\n✅ Extraction terminée")
+
+    print("\n✅ Extraction terminée")
     print(f"   Total extraits: {result.total_extracted}")
     print(f"   Confiance: {result.confidence}")
     print(f"   Nombre de tenders: {len(result.tenders)}")
-    
+
     if result.tenders:
         print("\n📋 Tenders extraits :")
         print("-" * 80)
@@ -69,9 +69,78 @@ def test_extraction():
             print(f"  Relevance Score: {tender.relevance_score}")
     else:
         print("\n⚠️ Aucun tender extrait")
-    
+
     print("\n" + "=" * 80)
     return result
 
+
 if __name__ == "__main__":
     test_extraction()
+
+
+def test_parse_extract_tavily_search_item():
+    """Tavily search item is normalized into a Notice-compatible dict."""
+    from unittest.mock import MagicMock
+
+    from tenderai_bf.agents.nodes.parse_extract import parse_extract_node
+
+    state = MagicMock()
+    state.error_occurred = False
+    state.run_id = "run-test"
+    state.country_config = {"rag": {}, "llm": {}}
+    state.items_raw = [
+        {
+            "url": "https://example.com/tenders/123",
+            "content": "Fourniture équipements réseau pour le MEFP Sénégal...",
+            "status": "success",
+            "parser_type": "tavily_search",
+            "source": "tavily",
+            "title": "Appel d'offres réseau MEFP",
+            "score": 0.91,
+            "fetched_at": "2026-06-03T10:00:00",
+        }
+    ]
+    state.items_parsed = []
+    state.update_stats = MagicMock()
+
+    result = parse_extract_node(state)
+
+    assert len(result.items_parsed) == 1
+    item = result.items_parsed[0]
+    assert item["title"] == "Appel d'offres réseau MEFP"
+    assert item["url"] == "https://example.com/tenders/123"
+    assert "réseau" in item["description"]
+    assert item["source"] == "tavily"
+
+
+def test_parse_extract_tavily_extract_item():
+    """Tavily extract item is normalized into a Notice-compatible dict."""
+    from unittest.mock import MagicMock
+
+    from tenderai_bf.agents.nodes.parse_extract import parse_extract_node
+
+    state = MagicMock()
+    state.error_occurred = False
+    state.run_id = "run-test"
+    state.country_config = {"rag": {}, "llm": {}}
+    state.items_raw = [
+        {
+            "url": "https://gov.example.com/tenders",
+            "content": "Liste des marchés publics en cours...",
+            "status": "success",
+            "parser_type": "tavily_extract",
+            "source": "tavily",
+            "title": "Portail marchés Sénégal",
+            "score": None,
+            "fetched_at": "2026-06-03T10:00:00",
+        }
+    ]
+    state.items_parsed = []
+    state.update_stats = MagicMock()
+
+    result = parse_extract_node(state)
+
+    assert len(result.items_parsed) == 1
+    item = result.items_parsed[0]
+    assert item["source"] == "tavily"
+    assert item["url"] == "https://gov.example.com/tenders"

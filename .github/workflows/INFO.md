@@ -40,11 +40,11 @@ ghcr.io/abdazz/tenderai-bf-worker:latest
 
 ### Configuration
 
-Le même `docker-compose.yml` est utilisé partout. En production :
+Le même `docker-compose.server.yml` est utilisé partout. En production :
 
-1. Le workflow copie `docker-compose.override.prod.yml` → `docker-compose.override.yml`
+1. Le workflow copie `docker-compose.server.yml` → `docker-compose.override.yml`
 2. Docker Compose merge automatiquement les deux fichiers
-3. L'override configure l'utilisation des images du registry
+3. L'override configure l'utilisation des images du registry avec les variables d'environnement
 
 Pas besoin de fichiers séparés ! 🎉
 

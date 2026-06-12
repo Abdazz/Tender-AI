@@ -3,26 +3,37 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
+import { CountrySelector } from "@/components/country-selector";
+import { useCountry } from "@/contexts/country-context";
 
 const baseLinks = [
   { href: "/", label: "Dashboard" },
   { href: "/reports", label: "Rapports" },
   { href: "/sources", label: "Sources" },
+];
+
+const superAdminLinks = [
+  { href: "/users", label: "Utilisateurs" },
+  { href: "/countries", label: "Pays" },
+];
+
+const bottomLinks = [
   { href: "/settings", label: "Paramètres" },
   { href: "/logs", label: "Logs" },
 ];
 
-const adminLinks = [{ href: "/users", label: "Utilisateurs" }];
-
 interface SidebarProps {
-  role: "admin" | "viewer";
+  role: "super_admin" | "admin" | "viewer";
   username: string;
 }
 
 export function Sidebar({ role, username }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
-  const links = role === "admin" ? [...baseLinks, ...adminLinks] : baseLinks;
+  const { selectedCountry } = useCountry();
+  const links = role === "super_admin"
+    ? [...baseLinks, ...superAdminLinks, ...bottomLinks]
+    : [...baseLinks, ...bottomLinks];
 
   async function handleLogout() {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -51,6 +62,14 @@ export function Sidebar({ role, username }: SidebarProps) {
           </Link>
         ))}
       </nav>
+      {role === "super_admin" ? (
+        <CountrySelector />
+      ) : selectedCountry ? (
+        <div className="px-4 py-3 border-t border-slate-700">
+          <p className="text-xs text-slate-500 mb-1">Pays</p>
+          <p className="text-sm text-slate-200 font-medium truncate">{selectedCountry.name}</p>
+        </div>
+      ) : null}
       <div className="p-4 border-t border-slate-700">
         <button
           onClick={handleLogout}

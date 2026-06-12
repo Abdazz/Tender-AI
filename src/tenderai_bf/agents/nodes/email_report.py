@@ -10,17 +10,18 @@ schema-level errors) remain errors via ``state.add_error(...)``.
 
 import time
 from datetime import datetime
-from typing import Dict
 
-from ...config import settings
+from ...db import get_db_context
 from ...email import send_report_email
 from ...logging import get_logger
+from ...models import Recipient
 from ...utils.node_logger import clear_node_output, log_node_output
+from .._cfg import cfg
 
 logger = get_logger(__name__)
 
 
-def email_report_node(state) -> Dict:
+def email_report_node(state) -> dict:
     """Send the generated report via email."""
 
     # Clear output file at start
@@ -30,14 +31,18 @@ def email_report_node(state) -> Dict:
     start_time = time.time()
 
     # Check if email should be sent (access as dict or object attribute)
-    send_email = getattr(state, 'send_email', True) if hasattr(state, 'send_email') else state.get('send_email', True)
+    send_email = (
+        getattr(state, "send_email", True)
+        if hasattr(state, "send_email")
+        else state.get("send_email", True)
+    )
 
     if not send_email:
         logger.info("Email sending disabled, skipping", run_id=state.run_id)
         state.email_status = {
-            'success': True,
-            'skipped': True,
-            'reason': 'send_email flag is False'
+            "success": True,
+            "skipped": True,
+            "reason": "send_email flag is False",
         }
         return state
 
@@ -51,15 +56,22 @@ def email_report_node(state) -> Dict:
         return state
 
     # Resolve recipients (also fatal if empty: misconfiguration, not transient).
-    # In non-production environments only the EMAIL_TO address from .env is used,
-    # to avoid accidentally mailing real clients during local runs.
     recipients = []
-    if settings.email.to_address:
-        recipients.append(settings.email.to_address)
-    if settings.is_production and settings.recipients:
-        for recipient in settings.recipients:
-            if 'email' in recipient and recipient['email'] not in recipients:
-                recipients.append(recipient['email'])
+    _primary = cfg(state, "email", "to_address")
+    if _primary:
+        recipients.append(_primary)
+    with get_db_context() as _db:
+        db_recipients = (
+            _db.query(Recipient)
+            .filter(
+                Recipient.country_id == state.country_id,
+                Recipient.enabled == True,  # noqa: E712
+            )
+            .all()
+        )
+        for r in db_recipients:
+            if r.email not in recipients:
+                recipients.append(r.email)
     if not recipients:
         msg = "No email recipients configured"
         logger.error(msg, run_id=state.run_id)
@@ -84,7 +96,10 @@ def email_report_node(state) -> Dict:
             run_id=state.run_id,
             stats=state.stats.dict(),
             recipients=recipients,
-            notices=getattr(state, 'unique_items', None) or getattr(state, 'relevant_items', None) or [],
+            notices=getattr(state, "unique_items", None)
+            or getattr(state, "relevant_items", None)
+            or [],
+            country_name=getattr(state, "country_name", "Burkina Faso") or "Burkina Faso",
         )
         if not success:
             delivery_error = "send_report_email returned False (SMTP rejected delivery)"
@@ -109,10 +124,10 @@ def email_report_node(state) -> Dict:
         )
 
     state.email_status = {
-        'success': success,
-        'recipients_count': len(recipients),
-        'sent_at': time.time(),
-        'error': delivery_error if not success else None,
+        "success": success,
+        "recipients_count": len(recipients),
+        "sent_at": time.time(),
+        "error": delivery_error if not success else None,
     }
 
     # Total pipeline time (formatted) + per-step stats are still useful even
@@ -134,7 +149,7 @@ def email_report_node(state) -> Dict:
         "email_report",
         {
             **state.email_status,
-            'final_statistics': state.stats.dict(),
+            "final_statistics": state.stats.dict(),
         },
         run_id=state.run_id,
     )

@@ -1,18 +1,36 @@
-import { cookies } from "next/headers";
-import { api } from "@/lib/api";
+"use client";
+
+import { useEffect, useState } from "react";
+import { useCountry } from "@/contexts/country-context";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import type { RunItem } from "@/lib/api";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
+export default function ReportsPage() {
+  const { selectedCountry } = useCountry();
+  const [completed, setCompleted] = useState<RunItem[]>([]);
 
-export default async function ReportsPage() {
-  const token = (await cookies()).get("auth_token")?.value ?? "";
-  const runsData = await api.getRuns(token, 1, 50).catch(() => ({ runs: [] }));
-  const completed = runsData.runs.filter((r) => r.status === "completed");
+  useEffect(() => {
+    if (!selectedCountry) return;
+    const params = new URLSearchParams({
+      country_id: String(selectedCountry.id),
+      page: "1",
+      page_size: "50",
+    });
+    fetch(`/api/proxy/runs?${params}`)
+      .then((r) => r.json())
+      .then((data) => {
+        const runs: RunItem[] = data.runs ?? [];
+        setCompleted(runs.filter((r) => r.status === "completed" || r.status === "completed_with_warnings"));
+      })
+      .catch(() => setCompleted([]));
+  }, [selectedCountry?.id]);
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold">Rapports</h1>
+      <h1 className="text-2xl font-bold">
+        Rapports{selectedCountry ? ` — ${selectedCountry.name}` : ""}
+      </h1>
       <Card>
         <CardHeader>
           <CardTitle>Rapports disponibles</CardTitle>
@@ -39,8 +57,7 @@ export default async function ReportsPage() {
                   </td>
                   <td>
                     <a
-                      href={`${API_URL}/api/v1/reports/${run.run_id}/download`}
-                      target="_blank"
+                      href={`/api/proxy/reports/${run.run_id}/download`}
                       className="text-blue-600 hover:underline text-xs"
                     >
                       Télécharger

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,6 +14,12 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 
+interface Country {
+  id: number;
+  name: string;
+  code: string;
+}
+
 interface Props {
   onCreated: () => void;
 }
@@ -22,19 +28,36 @@ export function CreateUserDialog({ onCreated }: Props) {
   const [open, setOpen] = useState(false);
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
-  const [role, setRole] = useState<"admin" | "viewer">("viewer");
+  const [role, setRole] = useState<"super_admin" | "admin" | "viewer">("viewer");
+  const [countryId, setCountryId] = useState<string>("");
+  const [countries, setCountries] = useState<Country[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
+  useEffect(() => {
+    if (open) {
+      fetch("/api/proxy/countries")
+        .then((r) => r.json())
+        .then((data) => setCountries(Array.isArray(data) ? data : []))
+        .catch(() => setCountries([]));
+    }
+  }, [open]);
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (role !== "super_admin" && !countryId) {
+      setError("Un pays est requis pour les rôles admin et viewer.");
+      return;
+    }
     setLoading(true);
     setError("");
     try {
+      const body: Record<string, unknown> = { username, email, role };
+      if (role !== "super_admin" && countryId) body.country_id = Number(countryId);
       const res = await fetch("/api/proxy/users", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, email, role }),
+        body: JSON.stringify(body),
       });
       if (!res.ok) {
         const data = await res.json();
@@ -45,6 +68,7 @@ export function CreateUserDialog({ onCreated }: Props) {
       setUsername("");
       setEmail("");
       setRole("viewer");
+      setCountryId("");
       onCreated();
     } catch {
       setError("Erreur réseau.");
@@ -67,18 +91,18 @@ export function CreateUserDialog({ onCreated }: Props) {
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="username">Identifiant</Label>
+            <Label htmlFor="new-username">Identifiant</Label>
             <Input
-              id="username"
+              id="new-username"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               required
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="email">Email</Label>
+            <Label htmlFor="new-email">Email</Label>
             <Input
-              id="email"
+              id="new-email"
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
@@ -86,17 +110,35 @@ export function CreateUserDialog({ onCreated }: Props) {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="role">Rôle</Label>
+            <Label htmlFor="new-role">Rôle</Label>
             <select
-              id="role"
+              id="new-role"
               value={role}
-              onChange={(e) => setRole(e.target.value as "admin" | "viewer")}
+              onChange={(e) => { setRole(e.target.value as typeof role); setCountryId(""); }}
               className="w-full border border-input rounded-md px-3 py-2 text-sm bg-background"
             >
               <option value="viewer">Viewer</option>
               <option value="admin">Admin</option>
+              <option value="super_admin">Super Admin</option>
             </select>
           </div>
+          {role !== "super_admin" && (
+            <div className="space-y-2">
+              <Label htmlFor="new-country">Pays <span className="text-red-500">*</span></Label>
+              <select
+                id="new-country"
+                value={countryId}
+                onChange={(e) => setCountryId(e.target.value)}
+                className="w-full border border-input rounded-md px-3 py-2 text-sm bg-background"
+                required
+              >
+                <option value="">— Sélectionner un pays —</option>
+                {countries.map((c) => (
+                  <option key={c.id} value={c.id}>{c.name} ({c.code})</option>
+                ))}
+              </select>
+            </div>
+          )}
           {error && <p className="text-sm text-red-600">{error}</p>}
           <DialogFooter>
             <Button type="submit" disabled={loading}>

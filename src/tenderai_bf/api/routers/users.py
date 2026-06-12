@@ -1,33 +1,36 @@
-"""User management endpoints (admin only)."""
+"""User management endpoints (super_admin only)."""
 
 import os
 import secrets
 import uuid
-from typing import Optional
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, EmailStr
 
 from ...email import send_credentials_email
 from ...logging import get_logger
-from ...models import User
-from ..dependencies import AdminUser, DatabaseSession, get_password_hash
+from ...models import Country, User
+from ..dependencies import DatabaseSession, SuperAdminUser, get_password_hash
 
 logger = get_logger(__name__)
 router = APIRouter()
 
 FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:3000")
 
+VALID_ROLES = ("super_admin", "admin", "viewer")
+
 
 class UserCreateRequest(BaseModel):
     username: str
     email: EmailStr
-    role: str  # "admin" | "viewer"
+    role: str  # "super_admin" | "admin" | "viewer"
+    country_id: int | None = None
 
 
 class UserUpdateRequest(BaseModel):
-    role: Optional[str] = None
-    is_active: Optional[bool] = None
+    role: str | None = None
+    is_active: bool | None = None
+    country_id: int | None = None
 
 
 class UserOut(BaseModel):
@@ -37,21 +40,34 @@ class UserOut(BaseModel):
     role: str
     is_active: bool
     password_reset_required: bool
+    country_id: int | None = None
 
     class Config:
         from_attributes = True
 
 
 @router.get("", response_model=dict)
-async def list_users(current_user: AdminUser, db: DatabaseSession):
+async def list_users(current_user: SuperAdminUser, db: DatabaseSession):
     users = db.query(User).order_by(User.created_at.desc()).all()
     return {"users": [UserOut.model_validate(u) for u in users]}
 
 
 @router.post("", response_model=UserOut, status_code=201)
-async def create_user(request: UserCreateRequest, current_user: AdminUser, db: DatabaseSession):
-    if request.role not in ("admin", "viewer"):
-        raise HTTPException(status_code=400, detail="role must be 'admin' or 'viewer'")
+async def create_user(
+    request: UserCreateRequest, current_user: SuperAdminUser, db: DatabaseSession
+):
+    if request.role not in VALID_ROLES:
+        raise HTTPException(status_code=400, detail=f"role must be one of: {', '.join(VALID_ROLES)}")
+
+    # Non-super_admin users must have a country
+    if request.role != "super_admin" and not request.country_id:
+        raise HTTPException(status_code=400, detail="country_id is required for admin and viewer roles")
+
+    # Validate country exists
+    if request.country_id:
+        country = db.query(Country).filter(Country.id == request.country_id).first()
+        if not country:
+            raise HTTPException(status_code=400, detail="Country not found")
 
     if db.query(User).filter(User.username == request.username).first():
         raise HTTPException(status_code=409, detail="Username already exists")
@@ -66,6 +82,7 @@ async def create_user(request: UserCreateRequest, current_user: AdminUser, db: D
         email=request.email,
         hashed_password=get_password_hash(password),
         role=request.role,
+        country_id=request.country_id if request.role != "super_admin" else None,
         is_active=True,
         password_reset_required=True,
     )
@@ -88,7 +105,7 @@ async def create_user(request: UserCreateRequest, current_user: AdminUser, db: D
 async def update_user(
     user_id: str,
     request: UserUpdateRequest,
-    current_user: AdminUser,
+    current_user: SuperAdminUser,
     db: DatabaseSession,
 ):
     user = db.query(User).filter(User.id == user_id).first()
@@ -99,9 +116,15 @@ async def update_user(
         raise HTTPException(status_code=400, detail="You cannot deactivate your own account")
 
     if request.role is not None:
-        if request.role not in ("admin", "viewer"):
-            raise HTTPException(status_code=400, detail="role must be 'admin' or 'viewer'")
+        if request.role not in VALID_ROLES:
+            raise HTTPException(status_code=400, detail=f"role must be one of: {', '.join(VALID_ROLES)}")
         user.role = request.role
+
+    if request.country_id is not None:
+        country = db.query(Country).filter(Country.id == request.country_id).first()
+        if not country:
+            raise HTTPException(status_code=400, detail="Country not found")
+        user.country_id = request.country_id
 
     if request.is_active is not None:
         user.is_active = request.is_active
@@ -113,7 +136,7 @@ async def update_user(
 
 
 @router.delete("/{user_id}", status_code=204)
-async def delete_user(user_id: str, current_user: AdminUser, db: DatabaseSession):
+async def delete_user(user_id: str, current_user: SuperAdminUser, db: DatabaseSession):
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -125,7 +148,7 @@ async def delete_user(user_id: str, current_user: AdminUser, db: DatabaseSession
 
 
 @router.post("/{user_id}/reset-password", response_model=UserOut)
-async def reset_password(user_id: str, current_user: AdminUser, db: DatabaseSession):
+async def reset_password(user_id: str, current_user: SuperAdminUser, db: DatabaseSession):
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")

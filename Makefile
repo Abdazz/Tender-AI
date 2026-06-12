@@ -46,9 +46,6 @@ logs: ## Show logs from all services
 logs-api: ## Show API service logs
 	docker-compose logs -f api
 
-logs-ui: ## Show UI service logs
-	docker-compose logs -f ui
-
 logs-worker: ## Show worker service logs
 	docker-compose logs -f worker
 
@@ -101,10 +98,6 @@ test-email: ## Test email configuration
 init-db: ## Initialize database schema
 	poetry run python -m tenderai_bf.cli init-db
 
-# UI Operations
-ui: ## Start Gradio UI locally
-	poetry run python -m tenderai_bf.ui.app
-
 scheduler: ## Start scheduler daemon
 	poetry run python -m tenderai_bf.scheduler.schedule
 
@@ -112,7 +105,7 @@ scheduler: ## Start scheduler daemon
 health: ## Check service health
 	@echo "Checking service health..."
 	@curl -f http://localhost:8000/health || echo "API not responding"
-	@curl -f http://localhost:7860 || echo "UI not responding"
+	@curl -f http://localhost:3000 || echo "Frontend not responding"
 
 ps: ## Show running containers
 	docker-compose ps
@@ -185,7 +178,6 @@ version-bump: ## Bump version (usage: make version-bump PART=patch|minor|major)
 setup: install-dev up-deps migrate ## Complete development setup
 	@echo "Development environment setup complete!"
 	@echo "Run 'make up' to start all services"
-	@echo "Run 'make ui' to start the Gradio interface"
 
 # Quick development cycle
 dev: format lint test ## Run development checks (format, lint, test)
