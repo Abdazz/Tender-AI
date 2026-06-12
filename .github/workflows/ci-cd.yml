@@ -184,12 +184,8 @@ jobs:
             
             # Setup production environment
             echo "📝 Configuring production environment..."
-            # Copy unified server override (parameterized via .env.prod)
+            # Copy unified server override (services lisent .env.prod via env_file: .env.${ENV_NAME})
             cp docker-compose.server.yml docker-compose.override.yml
-
-            # .env.prod is the single source of truth for production.
-            # Symlink .env → .env.prod so docker-compose env_file: .env works.
-            ln -sf .env.prod .env
 
             # Inject security credentials from GitHub Secrets into .env.prod
             sed -i "s|^TENDERAI_JWT_SECRET=.*|TENDERAI_JWT_SECRET=${TENDERAI_JWT_SECRET}|" .env.prod
@@ -419,12 +415,8 @@ jobs:
             git config pull.ff only
             git pull origin staging
 
-            # Copy unified server override (parameterized via .env.staging)
+            # Copy unified server override (services lisent .env.staging via env_file: .env.${ENV_NAME})
             cp docker-compose.server.yml docker-compose.override.yml
-
-            # .env.staging is the single source of truth for staging.
-            # Symlink .env → .env.staging so docker-compose service env_file: .env works.
-            ln -sf .env.staging .env
 
             # Inject security credentials from GitHub Secrets into .env.staging
             sed -i "s|^TENDERAI_JWT_SECRET=.*|TENDERAI_JWT_SECRET=${TENDERAI_JWT_SECRET}|" .env.staging
