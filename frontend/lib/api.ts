@@ -59,6 +59,19 @@ export interface SourceOut {
   updated_at: string;
 }
 
+export interface RecipientOut {
+  id: number;
+  email: string;
+  name: string | null;
+  group: string;
+  enabled: boolean;
+  country_id: number | null;
+  last_sent_at: string | null;
+  bounce_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface SourceCreate {
   name: string;
   base_url: string;
