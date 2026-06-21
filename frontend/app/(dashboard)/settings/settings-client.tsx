@@ -9,10 +9,11 @@ import { RAGSection, type RAGData } from "@/components/settings/rag-section";
 import { ClassificationSection, type ClassificationData } from "@/components/settings/classification-section";
 import { PromptsSection, type PromptsData } from "@/components/settings/prompts-section";
 import { ReadonlySection } from "@/components/settings/readonly-section";
+import { RecipientsSection } from "@/components/settings/recipients-section";
 
 const TABS = [
   "Pipeline", "Planificateur", "LLM", "Email",
-  "RAG", "Classification", "Prompts", "Infrastructure",
+  "Destinataires", "RAG", "Classification", "Prompts", "Infrastructure",
 ] as const;
 type Tab = typeof TABS[number];
 
@@ -73,6 +74,9 @@ export function SettingsClient({ sections, readonly, countryId }: Props) {
           initialData={sections.email as unknown as EmailData}
           saveUrl={saveUrl("email")}
         />
+      )}
+      {active === "Destinataires" && (
+        <RecipientsSection countryId={countryId} />
       )}
       {active === "RAG" && sections.rag && (
         <RAGSection

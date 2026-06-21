@@ -10,7 +10,6 @@ const baseLinks = [
   { href: "/", label: "Dashboard" },
   { href: "/reports", label: "Rapports" },
   { href: "/sources", label: "Sources" },
-  { href: "/recipients", label: "Destinataires" },
 ];
 
 const superAdminLinks = [
