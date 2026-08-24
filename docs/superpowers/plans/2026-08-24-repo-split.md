@@ -655,9 +655,12 @@ git push origin main
 
 - [ ] **Step 1: Lancer le stack backend seul**
 
+`tenderai-infra` n'existe pas encore à ce stade du plan (Tasks 8-9 viennent après), donc `settings.yaml` n'est pas disponible depuis ce repo. Pour cette validation, le copier depuis le monorepo original :
+
 ```bash
 cd /tmp/tenderai-backend-work
 cp .env.example .env
+cp /home/yulcom/web/tender-ai/settings.yaml ./settings.yaml
 cp docker-compose.override.dev.yml docker-compose.override.yml
 make up-deps
 ```
@@ -918,7 +921,16 @@ npm run build
 ```
 Attendu : build réussi, exit code 0.
 
-- [ ] **Step 2: Lancer en dev contre un backend local (Task 4 doit avoir laissé le backend accessible, sinon relancer `make up-deps && docker-compose up -d api` dans `tenderai-backend-work`)**
+- [ ] **Step 2: Lancer en dev contre un backend local**
+
+Task 4 arrête son stack à la fin (Step 5) — il sera donc arrêté à ce stade. Le relancer :
+
+```bash
+cd /tmp/tenderai-backend-work
+cp docker-compose.override.dev.yml docker-compose.override.yml 2>/dev/null || true
+docker-compose up -d postgres minio createbuckets api
+```
+Attendre que `api` soit `healthy` (`docker-compose ps api`) avant de continuer.
 
 ```bash
 NEXT_PUBLIC_API_URL=http://localhost:8000 npm run dev &
@@ -1008,11 +1020,11 @@ cd /tmp/tenderai-infra-work
 
 - [ ] **Step 1: Retirer le bind-mount `./alembic` de `docker-compose.server.yml`**
 
-Dans le service `api` de `docker-compose.server.yml`, supprimer la ligne :
+Dans le service `api` de `docker-compose.server.yml`, la ligne suivante est présente (confirmé) et doit être supprimée :
 ```yaml
       - ./alembic:/app/alembic
 ```
-(elle n'existe pas explicitement dans ce fichier en l'état actuel — vérifier avec `grep -n alembic docker-compose.server.yml` ; si absente, ce Step est un no-op, sinon la supprimer). Les migrations sont désormais cuites dans l'image `api` (`COPY alembic/ alembic/` dans `Dockerfile.api`, vérifié en Task 2).
+Les migrations sont désormais cuites dans l'image `api` (`COPY alembic/ alembic/` dans `Dockerfile.api`, vérifié en Task 2). Vérifier après coup avec `grep -n alembic docker-compose.server.yml` — la commande ne doit plus rien retourner pour le service `api`.
 
 - [ ] **Step 2: Réécrire `docker-compose.yml` en full-stack, build depuis checkouts frères**
 
