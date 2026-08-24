@@ -107,18 +107,11 @@ class Company(Base):
         DateTime, nullable=False, default=func.now(), onupdate=func.now()
     )
 
-    settings = relationship(
-        "CompanySettings", back_populates="company", cascade="all, delete-orphan"
-    )
-    country_subscriptions = relationship(
-        "CompanyCountrySubscription",
-        back_populates="company",
-        cascade="all, delete-orphan",
-    )
-
     def __repr__(self) -> str:
         return f"<Company(slug='{self.slug}', name='{self.name}', active={self.active})>"
 ```
+
+**Do not add `settings`/`country_subscriptions` relationships to `Company` in this task.** They reference `CompanySettings`/`CompanyCountrySubscription`, which don't exist until Tasks 3/2. SQLAlchemy's mapper configuration is process-wide and lazy — the first ORM query issued *anywhere* in the process (including pre-existing, unrelated tests) forces `configure_mappers()` to resolve every pending relationship, and a relationship string that can't be resolved fails configuration for the whole registry, breaking every ORM-backed test and endpoint until the target class exists. Task 2 adds the `country_subscriptions` relationship back onto `Company` in the same commit that defines `CompanyCountrySubscription`; Task 3 does the same for `settings`/`CompanySettings`.
 
 - [ ] **Step 4: Run test to verify it passes**
 
@@ -268,6 +261,16 @@ class CompanyCountrySubscription(Base):
         )
 ```
 
+Also add the back-reference onto `Company` (Task 1 deliberately omitted it — a relationship string pointing at a class that doesn't exist yet breaks SQLAlchemy's process-wide mapper configuration, so it lands here instead, in the same commit as `CompanyCountrySubscription` itself). In `src/tenderai_bf/models.py`, inside the `Company` class, add before its `__repr__` method:
+
+```python
+    country_subscriptions = relationship(
+        "CompanyCountrySubscription",
+        back_populates="company",
+        cascade="all, delete-orphan",
+    )
+```
+
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `poetry run pytest tests/test_company_store.py -v --no-cov`
@@ -395,10 +398,33 @@ class CompanySettings(Base):
         return f"<CompanySettings(company_id={self.company_id}, section='{self.section}')>"
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+Also add the back-reference onto `Company` (deferred from Task 1 for the same reason as Task 2's `country_subscriptions` — see Task 1's note). In `src/tenderai_bf/models.py`, inside the `Company` class, add before its `__repr__` method (alongside the `country_subscriptions` line Task 2 already added there):
+
+```python
+    settings = relationship(
+        "CompanySettings", back_populates="company", cascade="all, delete-orphan"
+    )
+```
+
+- [ ] **Step 4: Run test to verify it passes, and verify the mapper registry resolves cleanly**
 
 Run: `poetry run pytest tests/test_company_store.py -v --no-cov`
 Expected: PASS
+
+This task is the last one that leaves `Company` with an unresolved forward reference (Task 1 deliberately omitted both relationships; Task 2 restored `country_subscriptions`; this step restores `settings`, the last one). Add one more test to `tests/test_company_store.py` to lock this in as a regression guard — it must fail if any relationship on any model in the registry can't resolve:
+
+```python
+def test_sqlalchemy_mapper_registry_configures_cleanly(db):
+    """Guards against the Task 1 regression: a relationship() referencing a
+    not-yet-existing class breaks configure_mappers() for the whole process,
+    not just the model that declares it."""
+    from sqlalchemy.orm import configure_mappers
+
+    configure_mappers()
+```
+
+Run: `poetry run pytest tests/test_company_store.py -v --no-cov`
+Expected: PASS (all tests, including the new one)
 
 - [ ] **Step 5: Extend the migration — settings table + seed YULCOM classification/scheduler from `AppSettings`**
 
