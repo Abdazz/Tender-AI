@@ -41,11 +41,13 @@ def extract_tenders_structured(
 
         # For Groq, skip tool_calling and go straight to JSON fallback
         # Groq wraps parameters in nested objects causing validation failures.
-        # NVIDIA (ChatNVIDIA via langchain-nvidia-ai-endpoints==0.1.7, pinned for
-        # langchain-core compatibility) doesn't implement bind_tools/function-calling
-        # at all — with_structured_output() binds without error but every .invoke()
-        # raises NotImplementedError, which retries deterministically and silently
-        # degrades every chunk to zero extracted tenders instead of falling back.
+        # NVIDIA (ChatNVIDIA via langchain-nvidia-ai-endpoints) was historically
+        # unreliable for bind_tools/function-calling — with_structured_output()
+        # binds without error but every .invoke() could raise NotImplementedError,
+        # which retries deterministically and silently degrades every chunk to
+        # zero extracted tenders instead of falling back. Kept on the JSON
+        # fallback path defensively; re-evaluate if this special-case is still
+        # needed now that the package has been upgraded.
         if llm_provider.lower() in ("groq", "nvidia"):
             logger.info(
                 "Using JSON fallback mode (tool_calling unreliable/unsupported for this provider)",
