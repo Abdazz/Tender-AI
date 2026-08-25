@@ -498,25 +498,7 @@ def extract_item_links_node(state) -> dict:
                             valid_links.append(link)
                             seen_urls.add(url)
                     # Handle UNGM listings (dict with source='ungm')
-                    elif isinstance(link, dict) and link.get("source") == "ungm":
-                        url = link.get("url")
-                        if url and url not in seen_urls:
-                            valid_links.append(link)
-                            seen_urls.add(url)
-                    # Handle Tavily search results (dict with source='tavily')
-                    elif isinstance(link, dict) and link.get("source") == "tavily":
-                        url = link.get("url")
-                        if url and url not in seen_urls:
-                            valid_links.append(link)
-                            seen_urls.add(url)
-                    # Handle Playwright results (dict with source='playwright')
-                    elif isinstance(link, dict) and link.get("source") == "playwright":
-                        url = link.get("url")
-                        if url and url not in seen_urls:
-                            valid_links.append(link)
-                            seen_urls.add(url)
-                    # Handle Playwright detail pages (detail pages that need browser fetch)
-                    elif isinstance(link, dict) and link.get("source") == "playwright_detail":
+                    elif isinstance(link, dict) and link.get("source") == "ungm" or isinstance(link, dict) and link.get("source") == "tavily" or (isinstance(link, dict) and link.get("source") == "playwright" or isinstance(link, dict) and link.get("source") == "playwright_detail"):
                         url = link.get("url")
                         if url and url not in seen_urls:
                             valid_links.append(link)

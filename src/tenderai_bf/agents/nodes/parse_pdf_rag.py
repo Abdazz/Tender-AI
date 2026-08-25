@@ -443,7 +443,7 @@ def parse_pdf_with_rag(
         logger.info("Using RAG extraction mode with ChromaDB", source=source_name)
 
         # Step 1: Index PDF content
-        doc_ids = index_pdf_in_vector_store(
+        index_pdf_in_vector_store(
             pdf_path=pdf_path,
             source_name=source_name,
             filename=filename,

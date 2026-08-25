@@ -59,7 +59,7 @@ class EmailTestRequest(BaseModel):
 def _authenticate_user(db: Session, username: str, password: str) -> User | None:
     """Look up active user in DB and verify password. Returns User or None."""
     user = (
-        db.query(User).filter(User.username == username, User.is_active == True).first()
+        db.query(User).filter(User.username == username, User.is_active == True).first()  # noqa: E712 — SQLAlchemy column comparison, not a Python bool check
     )
     if not user:
         return None

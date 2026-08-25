@@ -121,7 +121,7 @@ def start_scheduler() -> None:
     SessionLocal = get_session_factory()
     db_session = SessionLocal()
     try:
-        countries = db_session.query(Country).filter(Country.active == True).all()
+        countries = db_session.query(Country).filter(Country.active == True).all()  # noqa: E712 — SQLAlchemy column comparison, not a Python bool check
         country_configs = {
             c.id: (c, CountryStore.get_all_with_fallback(db_session, c.id))
             for c in countries

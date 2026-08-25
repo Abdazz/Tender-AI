@@ -15,7 +15,7 @@ Strategy:
 
 import base64
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import httpx
 
@@ -55,7 +55,7 @@ Si tu ne vois aucun appel d'offres ou avis de marché public sur cette image, re
 
 def _extract_image_urls(html: str, max_days: int = 7) -> list[str]:
     """Parse data-src attributes for recent avis image URLs."""
-    cutoff = datetime.now(tz=timezone.utc) - timedelta(days=max_days)
+    cutoff = datetime.now(tz=UTC) - timedelta(days=max_days)
     urls: list[str] = []
     seen: set[str] = set()
 
@@ -71,7 +71,7 @@ def _extract_image_urls(html: str, max_days: int = 7) -> list[str]:
         if m:
             try:
                 img_date = datetime.strptime(m.group(1), "%Y-%m-%d").replace(
-                    tzinfo=timezone.utc
+                    tzinfo=UTC
                 )
                 if img_date < cutoff:
                     continue

@@ -418,9 +418,8 @@ def seed_sources(force: bool):
 
     from urllib.parse import urlparse
 
-    from sqlalchemy import text
-
     import yaml
+    from sqlalchemy import text
 
     yaml_path = Path("settings.yaml")
     if not yaml_path.exists():

@@ -1,5 +1,6 @@
 """Parse quotidien PDF using Docling."""
 
+import contextlib
 import re
 import uuid
 from datetime import datetime
@@ -78,10 +79,8 @@ def parse_quotidien_with_docling(
             # Clean up temp file
             import os
 
-            try:
+            with contextlib.suppress(Exception):
                 os.unlink(tmp_path)
-            except:
-                pass
 
     except Exception as e:
         logger.error("Docling parsing failed", error=str(e), title=quotidien_title)

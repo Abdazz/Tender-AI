@@ -2,7 +2,7 @@
 
 import re
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from ...logging import get_logger, log_classification
 from ...utils.llm_utils import get_llm_instance
@@ -111,7 +111,7 @@ def _parse_deadline(item: dict) -> datetime | None:
 
     for fmt in ("%Y-%m-%d", "%Y/%m/%d", "%d-%m-%Y", "%d/%m/%Y"):
         try:
-            return datetime.strptime(raw_str[:10], fmt).replace(tzinfo=timezone.utc)
+            return datetime.strptime(raw_str[:10], fmt).replace(tzinfo=UTC)
         except ValueError:
             continue
 
@@ -124,7 +124,7 @@ def _parse_deadline(item: dict) -> datetime | None:
         if mon in month_abbr:
             year = 2000 + yr if yr < 100 else yr
             try:
-                return datetime(year, month_abbr[mon], day, tzinfo=timezone.utc)
+                return datetime(year, month_abbr[mon], day, tzinfo=UTC)
             except ValueError:
                 pass
 
@@ -136,7 +136,7 @@ def _is_expired(item: dict) -> bool:
     deadline = _parse_deadline(item)
     if deadline is None:
         return False
-    return deadline < datetime.now(tz=timezone.utc)
+    return deadline < datetime.now(tz=UTC)
 
 
 def _is_supplier_registration(item: dict) -> bool:
@@ -199,7 +199,7 @@ def _is_geographic_mismatch(item: dict, country_name: str) -> bool:
 
     # 3. Entity field is itself a country name (e.g. entity="Géorgie")
     entity_lower = (item.get("entity") or "").strip().lower()
-    for iso3, fragments in _ISO3_TO_FRAGMENTS.items():
+    for _iso3, fragments in _ISO3_TO_FRAGMENTS.items():
         if entity_lower in fragments:  # exact match: entity IS a country name
             if not any(frag in country_lower for frag in fragments):
                 logger.debug(
@@ -222,7 +222,7 @@ def _is_real_open_tender(item: dict) -> bool:
     deadline = _parse_deadline(item)
     if deadline is None:
         return False
-    return deadline >= datetime.now(tz=timezone.utc)
+    return deadline >= datetime.now(tz=UTC)
 
 
 def _llm_verify_is_real_tender(item: dict, llm) -> bool:
@@ -331,7 +331,7 @@ def classify_node(state) -> dict:
         return state
 
     logger.info("Starting classify step", run_id=state.run_id)
-    start_time = time.time()
+    time.time()
 
     try:
         # Choose classification method based on configuration
@@ -365,7 +365,7 @@ def classify_with_keywords(state) -> dict:
 
         relevant_keywords = cfg(state, "classification", "relevant_keywords")
         if relevant_keywords:
-            for category, keywords in relevant_keywords.items():
+            for _category, keywords in relevant_keywords.items():
                 it_keywords.extend(keywords)
         else:
             # Fallback to default keywords if not in config
@@ -597,7 +597,7 @@ def classify_with_llm(state) -> dict:
         # Get keywords for keyword-based fallback
         it_keywords = []
         relevant_keywords = cfg(state, "classification", "relevant_keywords")
-        for category, keywords in relevant_keywords.items():
+        for _category, keywords in relevant_keywords.items():
             it_keywords.extend(keywords)
 
         # Classification prompt — two-gate: (1) is it a procurement notice? (2) is it IT/engineering?

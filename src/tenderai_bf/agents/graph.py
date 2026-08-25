@@ -9,7 +9,6 @@ from typing import Any
 from langgraph.graph import END, START, StateGraph
 from pydantic import BaseModel, Field
 
-from ..config import settings
 from ..country_store import CountryStore
 from ..db import get_db_context
 from ..logging import get_logger, log_run_complete, log_run_error, log_run_start
@@ -117,7 +116,7 @@ class TenderAIState(BaseModel):
                 setattr(self.stats, key, value)
 
 
-from ._cfg import cfg  # noqa: E402 — re-export for callers that import from graph
+from ._cfg import cfg  # noqa: E402, F401 — re-export for callers that import from graph
 
 
 def _state_get(state: Any, key: str, default: Any = None) -> Any:

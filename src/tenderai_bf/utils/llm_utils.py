@@ -202,7 +202,7 @@ def validate_llm_available() -> bool:
     elif provider == "ollama":
         # Ollama doesn't require API key, just check if langchain_ollama is available
         try:
-            import langchain_ollama
+            import langchain_ollama  # noqa: F401 — import itself is the availability probe
 
             return True
         except ImportError:

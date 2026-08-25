@@ -17,13 +17,13 @@ class SMTPClient:
 
     def __init__(
         self,
-        host: str = None,
-        port: int = None,
-        username: str = None,
-        password: str = None,
-        use_tls: bool = None,
-        use_ssl: bool = None,
-        timeout: int = None,
+        host: str | None = None,
+        port: int | None = None,
+        username: str | None = None,
+        password: str | None = None,
+        use_tls: bool | None = None,
+        use_ssl: bool | None = None,
+        timeout: int | None = None,
     ):
         """Initialize SMTP client with configuration."""
 

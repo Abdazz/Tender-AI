@@ -45,7 +45,6 @@ def test_run_sets_country_id_on_state():
         graph = TenderAIGraph()
 
         captured_state = {}
-        original_invoke = graph.app.invoke
 
         def mock_invoke(state, *a, **kw):
             captured_state["country_id"] = state.country_id

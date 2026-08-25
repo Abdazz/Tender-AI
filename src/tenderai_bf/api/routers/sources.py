@@ -32,7 +32,7 @@ async def list_sources(
     query = db.query(Source)
 
     if enabled_only:
-        query = query.filter(Source.enabled == True)
+        query = query.filter(Source.enabled == True)  # noqa: E712 — SQLAlchemy column comparison, not a Python bool check
 
     if country_id is not None:
         query = query.filter(Source.country_id == country_id)

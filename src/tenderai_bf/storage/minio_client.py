@@ -37,11 +37,11 @@ class MinIOClient:
 
     def __init__(
         self,
-        endpoint: str = None,
-        access_key: str = None,
-        secret_key: str = None,
-        bucket_name: str = None,
-        secure: bool = None,
+        endpoint: str | None = None,
+        access_key: str | None = None,
+        secret_key: str | None = None,
+        bucket_name: str | None = None,
+        secure: bool | None = None,
     ):
         """Initialize MinIO client with configuration."""
 

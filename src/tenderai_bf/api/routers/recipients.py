@@ -30,7 +30,7 @@ async def list_recipients(
     if country_id is not None:
         query = query.filter(Recipient.country_id == country_id)
     if enabled_only:
-        query = query.filter(Recipient.enabled == True)
+        query = query.filter(Recipient.enabled == True)  # noqa: E712 — SQLAlchemy column comparison, not a Python bool check
 
     rows = query.order_by(Recipient.email).all()
     return RecipientListResponse(

@@ -17,6 +17,7 @@ Source configuration (source.patterns):
                                 Default true.
 """
 
+import contextlib
 from datetime import datetime
 
 from ...logging import get_logger
@@ -117,7 +118,7 @@ async def fetch_playwright(source: dict, run_id: str) -> dict:
                 # so each detail page is fetched and parsed separately by
                 # fetch_items / parse_extract (no LLM needed for listing page).
                 import json
-                from urllib.parse import urlparse as _urlparse, urljoin as _urljoin
+                from urllib.parse import urljoin as _urljoin, urlparse as _urlparse
 
                 _parsed = _urlparse(url)
                 _base_origin = f"{_parsed.scheme}://{_parsed.netloc}"
@@ -158,10 +159,8 @@ async def fetch_playwright(source: dict, run_id: str) -> dict:
                         await page.goto(
                             next_url, wait_until="domcontentloaded", timeout=wait_timeout
                         )
-                        try:
+                        with contextlib.suppress(Exception):
                             await page.wait_for_selector(wait_selector, timeout=wait_timeout)
-                        except Exception:
-                            pass
                         if extra_wait > 0:
                             await page.wait_for_timeout(extra_wait)
 
@@ -209,10 +208,8 @@ async def fetch_playwright(source: dict, run_id: str) -> dict:
                                 "domcontentloaded", timeout=wait_timeout
                             )
 
-                        try:
+                        with contextlib.suppress(Exception):
                             await page.wait_for_selector(wait_selector, timeout=wait_timeout)
-                        except Exception:
-                            pass
 
                         if extra_wait > 0:
                             await page.wait_for_timeout(extra_wait)

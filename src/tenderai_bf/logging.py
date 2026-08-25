@@ -142,17 +142,14 @@ def configure_logging() -> FilteringBoundLogger:
     if settings.is_development:
         # Development: pretty console output
         structlog.configure(
-            processors=shared_processors
-            + [
-                structlog.stdlib.ProcessorFormatter.wrap_for_formatter,
-            ],
+            processors=[*shared_processors, structlog.stdlib.ProcessorFormatter.wrap_for_formatter],
             logger_factory=structlog.stdlib.LoggerFactory(),
             cache_logger_on_first_use=True,
         )
     else:
         # Production: JSON output
         structlog.configure(
-            processors=shared_processors + [structlog.processors.JSONRenderer()],
+            processors=[*shared_processors, structlog.processors.JSONRenderer()],
             logger_factory=structlog.stdlib.LoggerFactory(),
             cache_logger_on_first_use=True,
         )
@@ -171,7 +168,7 @@ def configure_logging() -> FilteringBoundLogger:
     return logger
 
 
-def get_logger(name: str = None) -> FilteringBoundLogger:
+def get_logger(name: str | None = None) -> FilteringBoundLogger:
     """Get a logger instance for a specific module."""
     _ensure_logging_configured()
     return structlog.get_logger(name or "tenderai_bf")

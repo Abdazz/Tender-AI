@@ -650,7 +650,7 @@ def _add_appendices(document: Document, data: dict[str, Any]) -> None:
         row_cells[0].text = key.replace("_", " ").title()
 
         # Format time values (keys ending with '_seconds')
-        if key.endswith("_seconds") and isinstance(value, (int, float)):
+        if key.endswith("_seconds") and isinstance(value, int | float):
             if value < 0.01:
                 # Very small values in milliseconds
                 row_cells[1].text = f"{value * 1000:.2f} ms"

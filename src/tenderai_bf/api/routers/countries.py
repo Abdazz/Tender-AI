@@ -1,5 +1,7 @@
 """CRUD endpoints for countries and per-country settings."""
 
+import contextlib
+
 from fastapi import APIRouter, BackgroundTasks, HTTPException, status
 from sqlalchemy.exc import IntegrityError
 
@@ -127,10 +129,8 @@ async def update_section(
     if section == "scheduler":
         from ...scheduler.schedule import reschedule_country_job
 
-        try:
+        with contextlib.suppress(Exception):
             reschedule_country_job(country_id, country.code, body)
-        except Exception:
-            pass
     return body
 
 

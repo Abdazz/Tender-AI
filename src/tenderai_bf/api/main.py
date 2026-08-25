@@ -53,10 +53,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
 
     # Seed settings from current config if DB is empty, then seed all countries
     try:
-        from ..db import get_session_factory
-        from ..settings_store import SettingsStore
         from ..country_store import CountryStore as CS
+        from ..db import get_session_factory
         from ..models import Country as CountryModel
+        from ..settings_store import SettingsStore
 
         SessionLocal = get_session_factory()
         with SessionLocal() as db_session:

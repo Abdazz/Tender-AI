@@ -288,7 +288,7 @@ async def fetch_single_listing(
     # Standard HTML listing source (ARCOP and others)
     try:
         # Respect rate limits
-        rate_limit = source.get("rate_limit", "10/m")
+        source.get("rate_limit", "10/m")
         # TODO: Implement proper rate limiting
 
         # Fetch the listing page with exponential-backoff retries on

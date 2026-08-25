@@ -66,7 +66,7 @@ def extract_quotidien_with_docling(pdf_bytes: bytes) -> dict:
         return {"status": "error", "error": str(e), "tenders": []}
 
 
-def parse_quotidien_text(text: str, markdown: str = None) -> list[dict]:
+def parse_quotidien_text(text: str, markdown: str | None = None) -> list[dict]:
     """
     Parse quotidien text to extract individual tender notices.
 
