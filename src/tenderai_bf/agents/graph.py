@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from langgraph.graph import END, StateGraph
+from langgraph.graph import END, START, StateGraph
 from pydantic import BaseModel, Field
 
 from ..config import settings
@@ -242,7 +242,7 @@ class TenderAIGraph:
         workflow.add_node("error_handler", error_handler)
 
         # Set entry point
-        workflow.set_entry_point("load_sources")
+        workflow.add_edge(START, "load_sources")
 
         # Sequence of steps that must short-circuit on error.
         sequential_edges = [
