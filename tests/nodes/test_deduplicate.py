@@ -169,7 +169,7 @@ if __name__ == "__main__":
 # DB-first cfg() tests — use TenderAIState, not MockState
 # ---------------------------------------------------------------------------
 
-import os
+import os  # noqa: E402 — grouped with the env var setup it configures below, not with the file's top-of-file imports
 
 os.environ.setdefault("TENDERAI_ENVIRONMENT", "test")
 os.environ.setdefault("TENDERAI_DATABASE_URL", "sqlite:///test.db")

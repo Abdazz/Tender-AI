@@ -2,6 +2,7 @@
 
 from collections.abc import Generator
 from contextlib import contextmanager
+import time
 
 from sqlalchemy import create_engine, event, text
 from sqlalchemy.ext.declarative import declarative_base
@@ -191,9 +192,6 @@ def get_database_info() -> dict:
         logger.error("Failed to get database info", error=str(e))
         return {"error": str(e)}
 
-
-# Import time for query timing
-import time
 
 # Register all ORM models with Base.metadata so that create_all() works
 # correctly even when individual model modules haven't been imported yet.

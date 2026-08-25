@@ -6,9 +6,9 @@ os.environ.setdefault("TENDERAI_DATABASE_URL", "sqlite:///test.db")
 os.environ.setdefault("TENDERAI_JWT_SECRET", "test-jwt-secret-not-used-for-real-auth-only-pytest-xxxxxxxx")
 os.environ.setdefault("TENDERAI_ADMIN_PASSWORD", "test-admin-password-not-real")
 
-import pytest
+import pytest  # noqa: E402 — must follow env var setup above
 
-from tenderai_bf.agents.graph import TenderAIState, cfg
+from tenderai_bf.agents.graph import TenderAIState, cfg  # noqa: E402 — must follow env var setup above
 
 
 def make_state(**country_config_override):

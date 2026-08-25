@@ -162,14 +162,14 @@ if __name__ == "__main__":
 # DB-first cfg() tests — use TenderAIState, not MockState
 # ---------------------------------------------------------------------------
 
-import os
+import os  # noqa: E402 — grouped with the env var setup it configures below, not with the file's top-of-file imports
 
 os.environ.setdefault("TENDERAI_ENVIRONMENT", "test")
 os.environ.setdefault("TENDERAI_DATABASE_URL", "sqlite:///test.db")
 os.environ.setdefault("TENDERAI_JWT_SECRET", "test-jwt-secret-not-used-for-real-auth-only-pytest-xxxxxxxx")
 os.environ.setdefault("TENDERAI_ADMIN_PASSWORD", "test-admin-password-not-real")
 
-from tenderai_bf.agents.graph import TenderAIState  # noqa: E402
+from tenderai_bf.agents.graph import TenderAIState  # noqa: E402 — must follow env var setup above
 
 COUNTRY_CONFIG_CLASSIFY = {
     "pipeline": {

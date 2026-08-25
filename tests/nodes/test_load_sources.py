@@ -6,10 +6,10 @@ os.environ.setdefault("TENDERAI_DATABASE_URL", "sqlite:///test.db")
 os.environ.setdefault("TENDERAI_JWT_SECRET", "test-jwt-secret-not-used-for-real-auth-only-pytest-xxxxxxxx")
 os.environ.setdefault("TENDERAI_ADMIN_PASSWORD", "test-admin-password-not-real")
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, patch  # noqa: E402 — must follow env var setup above
 
-from tenderai_bf.agents.graph import TenderAIState
-from tenderai_bf.agents.nodes.load_sources import load_sources_node
+from tenderai_bf.agents.graph import TenderAIState  # noqa: E402 — must follow env var setup above
+from tenderai_bf.agents.nodes.load_sources import load_sources_node  # noqa: E402 — must follow env var setup above
 
 
 def test_load_sources_uses_db_not_yaml():
