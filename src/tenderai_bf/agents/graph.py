@@ -180,40 +180,13 @@ def error_handler(state: TenderAIState) -> TenderAIState:
     return state
 
 
-class _AppWrapper:
-    """Thin wrapper around CompiledStateGraph that allows attribute overrides.
-
-    LangGraph's CompiledStateGraph is a Pydantic v1 model and refuses
-    arbitrary attribute assignment.  Wrapping it here lets tests replace
-    `invoke` with a mock without touching the compiled graph object.
-    """
-
-    def __init__(self, compiled_graph: Any) -> None:
-        object.__setattr__(self, "_compiled", compiled_graph)
-        object.__setattr__(self, "_overrides", {})
-
-    def __setattr__(self, name: str, value: Any) -> None:
-        self._overrides[name] = value
-
-    def __getattr__(self, name: str) -> Any:
-        overrides = object.__getattribute__(self, "_overrides")
-        if name in overrides:
-            return overrides[name]
-        return getattr(object.__getattribute__(self, "_compiled"), name)
-
-    def invoke(self, *args: Any, **kwargs: Any) -> Any:
-        overrides = object.__getattribute__(self, "_overrides")
-        fn = overrides.get("invoke", object.__getattribute__(self, "_compiled").invoke)
-        return fn(*args, **kwargs)
-
-
 class TenderAIGraph:
     """LangGraph pipeline for TenderAI BF."""
 
     def __init__(self):
         """Initialize the pipeline graph."""
         self.graph = self._build_graph()
-        self.app = _AppWrapper(self.graph.compile())
+        self.app = self.graph.compile()
         logger.info("TenderAI pipeline graph initialized")
 
     def _build_graph(self) -> StateGraph:
