@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- Toutes les commandes s'exécutent depuis `/home/yulcom/web/tender-ai` (le monorepo original — ce chantier n'est PAS affecté par le split en 3 repos du chantier 1, qui est encore en cours ailleurs).
+- Toutes les commandes s'exécutent depuis `/home/yulcom/web/tender-ai/.claude/worktrees/repo-split` — un worktree git isolé qui contient sa propre copie complète et identique du code source (`pyproject.toml`, `src/`, `tests/`), jamais modifiée par le chantier 1 (séparation en 3 repos, en pause ailleurs dans ce même worktree — les deux chantiers touchent des fichiers disjoints et cohabitent sans conflit). Ne pas exécuter ces commandes depuis `/home/yulcom/web/tender-ai` directement — les sessions isolées dans ce worktree ne peuvent cibler que leur propre répertoire.
 - `langchain-community` est retiré de `pyproject.toml` — confirmé zéro usage direct dans `src/` et `tests/` (`grep -rn "langchain_community" src/ tests/` retourne vide).
 - `langchain_core.prompts` et `langchain_text_splitters` remplacent respectivement `langchain.prompts` et `langchain.text_splitter` comme chemins d'import canoniques — indépendamment du fait que les anciens réexports survivent ou non en v1.
 - `workflow.set_entry_point("load_sources")` devient `workflow.add_edge(START, "load_sources")` avec `START` importé depuis `langgraph.graph`.
@@ -47,7 +47,7 @@ tests/test_pipeline_country.py                 — Modify (conditionnel): unique
 - [ ] **Step 1: Confirmer l'absence d'usage de `langchain-community`**
 
 ```bash
-cd /home/yulcom/web/tender-ai
+cd /home/yulcom/web/tender-ai/.claude/worktrees/repo-split
 grep -rn "langchain_community" src/ tests/
 ```
 Attendu : aucune sortie (déjà confirmé lors de l'écriture de ce plan — cette étape est une re-vérification avant de retirer la dépendance en Task 2).
@@ -56,7 +56,7 @@ Attendu : aucune sortie (déjà confirmé lors de l'écriture de ce plan — cet
 
 ```bash
 mkdir -p /tmp/langchain-upgrade-baseline
-cd /home/yulcom/web/tender-ai
+cd /home/yulcom/web/tender-ai/.claude/worktrees/repo-split
 TENDERAI_JWT_SECRET="test-jwt-secret-not-used-for-real-auth-only-pytest-xxxxxxxx" \
   TENDERAI_ADMIN_PASSWORD="test-admin-password-not-real" \
   poetry run pytest tests/ -v --no-cov > /tmp/langchain-upgrade-baseline/test-results-before.txt 2>&1
@@ -68,7 +68,7 @@ Attendu : le fichier contient la liste complète des tests avec leur statut (PAS
 - [ ] **Step 3: Committer le fichier de référence dans le repo pour traçabilité**
 
 ```bash
-cd /home/yulcom/web/tender-ai
+cd /home/yulcom/web/tender-ai/.claude/worktrees/repo-split
 mkdir -p docs/superpowers/artifacts
 cp /tmp/langchain-upgrade-baseline/test-results-before.txt docs/superpowers/artifacts/2026-08-25-langchain-upgrade-test-baseline.txt
 git add docs/superpowers/artifacts/2026-08-25-langchain-upgrade-test-baseline.txt
@@ -115,7 +115,7 @@ langchain-nvidia-ai-endpoints = "^1.4.0"
 - [ ] **Step 2: Relancer la résolution des dépendances**
 
 ```bash
-cd /home/yulcom/web/tender-ai
+cd /home/yulcom/web/tender-ai/.claude/worktrees/repo-split
 poetry lock
 ```
 Attendu : exit code 0, `poetry.lock` mis à jour. Si la résolution échoue avec un conflit de versions, lire le message d'erreur de Poetry (il indique la contrainte en conflit) et ajuster la borne du package concerné dans `pyproject.toml` au minimum nécessaire pour lever le conflit, puis relancer `poetry lock`.
@@ -123,7 +123,7 @@ Attendu : exit code 0, `poetry.lock` mis à jour. Si la résolution échoue avec
 - [ ] **Step 3: Installer l'environnement**
 
 ```bash
-cd /home/yulcom/web/tender-ai
+cd /home/yulcom/web/tender-ai/.claude/worktrees/repo-split
 poetry install --extras "full" --with dev
 ```
 Attendu : exit code 0.
@@ -131,7 +131,7 @@ Attendu : exit code 0.
 - [ ] **Step 4: Smoke-test des imports de premier niveau**
 
 ```bash
-cd /home/yulcom/web/tender-ai
+cd /home/yulcom/web/tender-ai/.claude/worktrees/repo-split
 poetry run python -c "import langchain; import langgraph; import langchain_text_splitters; import langchain_groq; import langchain_openai; import langchain_ollama; import langchain_nvidia_ai_endpoints; print('langchain', langchain.__version__); print('langgraph', langgraph.__version__)"
 ```
 Attendu : exit code 0, affiche les versions installées (doit commencer par `1.` pour les deux). Aucune `ImportError`.
@@ -139,7 +139,7 @@ Attendu : exit code 0, affiche les versions installées (doit commencer par `1.`
 - [ ] **Step 5: Commit**
 
 ```bash
-cd /home/yulcom/web/tender-ai
+cd /home/yulcom/web/tender-ai/.claude/worktrees/repo-split
 git add pyproject.toml poetry.lock
 git commit -m "chore(deps): upgrade langchain to ^1.3.0 and langgraph to ^1.2.0"
 ```
@@ -193,7 +193,7 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 - [ ] **Step 4: Vérifier que les 3 fichiers s'importent sans erreur**
 
 ```bash
-cd /home/yulcom/web/tender-ai
+cd /home/yulcom/web/tender-ai/.claude/worktrees/repo-split
 poetry run python -c "from tenderai_bf.agents.nodes import deduplicate, summarize, parse_pdf_rag; print('ok')"
 ```
 Attendu : exit code 0, affiche `ok`. Aucune `ImportError`/`ModuleNotFoundError`.
@@ -201,7 +201,7 @@ Attendu : exit code 0, affiche `ok`. Aucune `ImportError`/`ModuleNotFoundError`.
 - [ ] **Step 5: Lancer les tests dédiés à ces 3 nœuds**
 
 ```bash
-cd /home/yulcom/web/tender-ai
+cd /home/yulcom/web/tender-ai/.claude/worktrees/repo-split
 TENDERAI_JWT_SECRET="test-jwt-secret-not-used-for-real-auth-only-pytest-xxxxxxxx" \
   TENDERAI_ADMIN_PASSWORD="test-admin-password-not-real" \
   poetry run pytest tests/nodes/test_deduplicate.py tests/nodes/test_summarize.py tests/nodes/test_pdf_rag.py -v --no-cov
@@ -211,7 +211,7 @@ Attendu : mêmes résultats que la baseline Task 1 pour ces 3 fichiers (aucune r
 - [ ] **Step 6: Commit**
 
 ```bash
-cd /home/yulcom/web/tender-ai
+cd /home/yulcom/web/tender-ai/.claude/worktrees/repo-split
 git add src/tenderai_bf/agents/nodes/deduplicate.py src/tenderai_bf/agents/nodes/summarize.py src/tenderai_bf/agents/nodes/parse_pdf_rag.py
 git commit -m "fix(langchain): update PromptTemplate and RecursiveCharacterTextSplitter import paths for v1"
 ```
@@ -254,7 +254,7 @@ par :
 - [ ] **Step 3: Vérifier que le graphe se compile toujours**
 
 ```bash
-cd /home/yulcom/web/tender-ai
+cd /home/yulcom/web/tender-ai/.claude/worktrees/repo-split
 TENDERAI_JWT_SECRET="test-jwt-secret-not-used-for-real-auth-only-pytest-xxxxxxxx" \
   TENDERAI_ADMIN_PASSWORD="test-admin-password-not-real" \
   poetry run python -c "
@@ -270,7 +270,7 @@ Attendu : exit code 0, affiche `graph compiled ok, nodes: 11`.
 - [ ] **Step 4: Lancer les tests touchant à la création du graphe**
 
 ```bash
-cd /home/yulcom/web/tender-ai
+cd /home/yulcom/web/tender-ai/.claude/worktrees/repo-split
 TENDERAI_JWT_SECRET="test-jwt-secret-not-used-for-real-auth-only-pytest-xxxxxxxx" \
   TENDERAI_ADMIN_PASSWORD="test-admin-password-not-real" \
   poetry run pytest tests/test_integration.py -v --no-cov
@@ -280,7 +280,7 @@ Attendu : `test_pipeline_graph_creation` passe (même résultat qu'en baseline T
 - [ ] **Step 5: Commit**
 
 ```bash
-cd /home/yulcom/web/tender-ai
+cd /home/yulcom/web/tender-ai/.claude/worktrees/repo-split
 git add src/tenderai_bf/agents/graph.py
 git commit -m "fix(langgraph): migrate set_entry_point to add_edge(START, ...)"
 ```
@@ -300,7 +300,7 @@ git commit -m "fix(langgraph): migrate set_entry_point to add_edge(START, ...)"
 - [ ] **Step 1: Tester si `CompiledStateGraph` accepte l'assignation d'attributs directement, sans wrapper**
 
 ```bash
-cd /home/yulcom/web/tender-ai
+cd /home/yulcom/web/tender-ai/.claude/worktrees/repo-split
 TENDERAI_JWT_SECRET="test-jwt-secret-not-used-for-real-auth-only-pytest-xxxxxxxx" \
   TENDERAI_ADMIN_PASSWORD="test-admin-password-not-real" \
   poetry run python -c "
@@ -353,7 +353,7 @@ par :
 - [ ] **Step 3: Vérifier le test de mock existant**
 
 ```bash
-cd /home/yulcom/web/tender-ai
+cd /home/yulcom/web/tender-ai/.claude/worktrees/repo-split
 TENDERAI_JWT_SECRET="test-jwt-secret-not-used-for-real-auth-only-pytest-xxxxxxxx" \
   TENDERAI_ADMIN_PASSWORD="test-admin-password-not-real" \
   poetry run pytest tests/test_pipeline_country.py::test_run_sets_country_id_on_state -v --no-cov
@@ -363,7 +363,7 @@ Attendu : PASSED. Si le Step 2a a été appliqué (wrapper retiré) et que ce te
 - [ ] **Step 4: Investiguer le type réel retourné par `.invoke()`**
 
 ```bash
-cd /home/yulcom/web/tender-ai
+cd /home/yulcom/web/tender-ai/.claude/worktrees/repo-split
 TENDERAI_JWT_SECRET="test-jwt-secret-not-used-for-real-auth-only-pytest-xxxxxxxx" \
   TENDERAI_ADMIN_PASSWORD="test-admin-password-not-real" \
   poetry run python -c "
@@ -387,7 +387,7 @@ Attendu : affiche `RETURN_TYPE: TenderAIState` ou `RETURN_TYPE: dict` (ou `Addab
 - [ ] **Step 5: Suite de tests complète du fichier**
 
 ```bash
-cd /home/yulcom/web/tender-ai
+cd /home/yulcom/web/tender-ai/.claude/worktrees/repo-split
 TENDERAI_JWT_SECRET="test-jwt-secret-not-used-for-real-auth-only-pytest-xxxxxxxx" \
   TENDERAI_ADMIN_PASSWORD="test-admin-password-not-real" \
   poetry run pytest tests/test_pipeline_country.py tests/test_integration.py -v --no-cov
@@ -397,7 +397,7 @@ Attendu : mêmes résultats que la baseline Task 1 pour ces deux fichiers (aucun
 - [ ] **Step 6: Commit**
 
 ```bash
-cd /home/yulcom/web/tender-ai
+cd /home/yulcom/web/tender-ai/.claude/worktrees/repo-split
 git add src/tenderai_bf/agents/graph.py
 git commit -m "refactor(langgraph): simplify _AppWrapper if CompiledStateGraph allows direct attribute assignment"
 ```
@@ -417,7 +417,7 @@ git commit -m "refactor(langgraph): simplify _AppWrapper if CompiledStateGraph a
 - [ ] **Step 1: Vérifier si `init_chat_model` supporte le provider `"nvidia"`**
 
 ```bash
-cd /home/yulcom/web/tender-ai
+cd /home/yulcom/web/tender-ai/.claude/worktrees/repo-split
 poetry run python -c "
 from langchain.chat_models import init_chat_model
 try:
@@ -571,7 +571,7 @@ par :
 - [ ] **Step 5: Vérifier que le test mockant `get_llm_instance` passe toujours**
 
 ```bash
-cd /home/yulcom/web/tender-ai
+cd /home/yulcom/web/tender-ai/.claude/worktrees/repo-split
 TENDERAI_JWT_SECRET="test-jwt-secret-not-used-for-real-auth-only-pytest-xxxxxxxx" \
   TENDERAI_ADMIN_PASSWORD="test-admin-password-not-real" \
   poetry run pytest tests/test_pipeline_country.py -v --no-cov -k "summary or llm"
@@ -581,7 +581,7 @@ Attendu : mêmes résultats que la baseline (ce test mocke `get_llm_instance` en
 - [ ] **Step 6: Smoke-test d'instanciation réelle avec le provider configuré par défaut (Groq)**
 
 ```bash
-cd /home/yulcom/web/tender-ai
+cd /home/yulcom/web/tender-ai/.claude/worktrees/repo-split
 poetry run python -c "
 import os
 os.environ.setdefault('TENDERAI_JWT_SECRET', 'test-jwt-secret-not-used-for-real-auth-only-pytest-xxxxxxxx')
@@ -600,7 +600,7 @@ Attendu : soit `LLM_INSTANCE: <ClassName>` (pas `None` — confirme que l'instan
 - [ ] **Step 7: Commit**
 
 ```bash
-cd /home/yulcom/web/tender-ai
+cd /home/yulcom/web/tender-ai/.claude/worktrees/repo-split
 git add src/tenderai_bf/utils/llm_utils.py
 git commit -m "refactor(llm): adopt init_chat_model for provider instantiation, preserve fallback logic"
 ```
@@ -619,7 +619,7 @@ git commit -m "refactor(llm): adopt init_chat_model for provider instantiation, 
 `src/tenderai_bf/agents/nodes/classify.py` appelle `llm.invoke(prompt)` puis accède à `response.content` (lignes 255-257 et 744-746). Comme `AIMessage` hérite de `BaseMessage`, `.content` reste accessible sans changement de code. Vérifier via les tests existants plutôt que par lecture seule :
 
 ```bash
-cd /home/yulcom/web/tender-ai
+cd /home/yulcom/web/tender-ai/.claude/worktrees/repo-split
 TENDERAI_JWT_SECRET="test-jwt-secret-not-used-for-real-auth-only-pytest-xxxxxxxx" \
   TENDERAI_ADMIN_PASSWORD="test-admin-password-not-real" \
   poetry run pytest tests/nodes/test_classify.py -v --no-cov
@@ -641,7 +641,7 @@ Attendu : mêmes résultats que la baseline Task 1 pour ce fichier (aucune régr
 - [ ] **Step 1: Suite de tests complète**
 
 ```bash
-cd /home/yulcom/web/tender-ai
+cd /home/yulcom/web/tender-ai/.claude/worktrees/repo-split
 TENDERAI_JWT_SECRET="test-jwt-secret-not-used-for-real-auth-only-pytest-xxxxxxxx" \
   TENDERAI_ADMIN_PASSWORD="test-admin-password-not-real" \
   poetry run pytest tests/ -v --no-cov > /tmp/langchain-upgrade-baseline/test-results-after.txt 2>&1
@@ -654,35 +654,36 @@ Attendu : la commande `diff` ne doit montrer aucun test passant en `PASSED` avan
 - [ ] **Step 2: Copier le résultat "after" dans le repo pour traçabilité**
 
 ```bash
-cd /home/yulcom/web/tender-ai
+cd /home/yulcom/web/tender-ai/.claude/worktrees/repo-split
 cp /tmp/langchain-upgrade-baseline/test-results-after.txt docs/superpowers/artifacts/2026-08-25-langchain-upgrade-test-after.txt
 git add docs/superpowers/artifacts/2026-08-25-langchain-upgrade-test-after.txt
 git commit -m "docs: capture test results after LangChain/LangGraph upgrade"
 ```
 
-- [ ] **Step 3: Exécution réelle du pipeline en mode test**
+- [ ] **Step 3: Construire une stack isolée à partir de CE worktree et exécuter le pipeline en mode test**
 
-Nécessite un environnement avec base de données et MinIO disponibles (via Docker, comme dans le chantier 1) ou un environnement de dev déjà configuré. Si le stack Docker de dev de l'utilisateur tourne déjà (voir note ci-dessous), l'utiliser ; sinon, documenter dans le rapport que cette étape nécessite une confirmation utilisateur avant de démarrer des containers, et s'arrêter ici en attendant.
-
-**Note importante** : ce monorepo tourne potentiellement déjà via un stack Docker de développement actif de l'utilisateur (containers `tenderai-postgres`, `tenderai-minio`, `tenderai-api`, `tenderai-worker`, `tenderai-frontend`, projet `tender-ai`) — observé pendant le chantier 1. Si c'est le cas, utiliser directement ce stack existant plutôt que d'en démarrer un nouveau :
+**Important** : le stack Docker de développement déjà actif sur cette machine (containers `tenderai-postgres`, `tenderai-minio`, `tenderai-api`, `tenderai-worker`, `tenderai-frontend`, projet `tender-ai`, observé pendant le chantier 1) tourne avec une image construite depuis `/home/yulcom/web/tender-ai` (le checkout principal) — **il ne reflète PAS les changements de code faits dans ce worktree** (Tasks 2-7 ci-dessus). L'utiliser directement testerait l'ancien code, pas la montée de version. Construire à la place une stack isolée depuis ce worktree, sur le même principe d'isolation que celui qui a fonctionné de manière fiable pendant le chantier 1 (nom de projet dédié, noms de containers suffixés, ports dédiés — ne jamais toucher aux containers `tenderai-postgres`/`tenderai-minio`/`tenderai-api`/`tenderai-worker`/`tenderai-frontend` sans suffixe, qui appartiennent au stack live de l'utilisateur).
 
 ```bash
-docker ps --format "{{.Names}}" | grep -E "^tenderai-(api|worker)$"
+cd /home/yulcom/web/tender-ai/.claude/worktrees/repo-split
+cp .env.example .env
+docker-compose -p tenderai-lcupgrade-val up -d --build postgres minio createbuckets api
 ```
-Si les deux noms apparaissent, le stack tourne déjà — exécuter directement dedans :
+Attendu : build de l'image `api` réussi (peut prendre du temps sur cette machine partagée — voir les leçons du chantier 1 sur la charge mémoire ; ne jamais lancer un second build en parallèle). Suivre avec `docker-compose -p tenderai-lcupgrade-val ps` jusqu'à ce que `api` soit `healthy` (poll avec `sleep 15`+ entre chaque vérification, jamais de boucle serrée). `worker` n'est pas nécessaire ici : `tenderai run-once` s'exécute de façon synchrone via la CLI dans le container `api`, indépendamment du scheduler du worker.
+
 ```bash
-docker exec tenderai-api poetry run tenderai run-once --test --country-code BF
+docker-compose -p tenderai-lcupgrade-val exec -T api alembic upgrade head
+docker-compose -p tenderai-lcupgrade-val exec -T api tenderai seed-sources
+docker-compose -p tenderai-lcupgrade-val exec -T api tenderai run-once --test --country-code BF
 ```
-(flag confirmé : `--test` — pas `--test-mode` — envoie le rapport uniquement à l'email admin plutôt qu'à tous les destinataires ; voir `src/tenderai_bf/cli.py:39-45`. Adapter `--country-code` au code pays réellement configuré si `BF` n'existe pas — vérifier via `docker exec tenderai-api poetry run tenderai run-once --help` ou la table `countries` si besoin.)
+(flag confirmé : `--test` — pas `--test-mode` — envoie le rapport uniquement à l'email admin plutôt qu'à tous les destinataires ; voir `src/tenderai_bf/cli.py:39-45`. Adapter `--country-code` au code pays réellement configuré si `BF` n'existe pas après le seed — vérifier via `docker-compose -p tenderai-lcupgrade-val exec -T api tenderai run-once --help` ou la table `countries` si besoin.)
 
-Si aucun stack Docker n'est disponible, arrêter cette étape et demander à l'utilisateur comment procéder (ne pas démarrer de nouveaux containers sans confirmation, par cohérence avec les décisions prises pendant le chantier 1).
-
-Attendu : la commande se termine sans exception non gérée (code de sortie 0), un `Run` est créé en base avec un statut `completed` ou `completed_with_warnings`.
+Attendu : la commande `run-once` se termine sans exception non gérée (code de sortie 0), un `Run` est créé en base avec un statut `completed` ou `completed_with_warnings`.
 
 - [ ] **Step 4: Comparaison structurelle du `Run` produit**
 
 ```bash
-docker exec tenderai-api poetry run python -c "
+docker-compose -p tenderai-lcupgrade-val exec -T api poetry run python -c "
 from tenderai_bf.db import get_db_context
 from tenderai_bf.models import Run
 with get_db_context() as db:
@@ -693,6 +694,19 @@ with get_db_context() as db:
 "
 ```
 Attendu : `status` est `completed` ou `completed_with_warnings` (pas `failed`), `error_message` est `None` ou correspond à un warning non-fatal déjà connu (ex: SMTP), `counts_json keys` liste des clés cohérentes avec `RunStatistics` (mêmes noms de champs qu'avant la montée de version — ce schéma n'a pas été touché par ce plan). Documenter le résultat exact dans le rapport de tâche final.
+
+- [ ] **Step 4bis: Nettoyer la stack isolée**
+
+```bash
+cd /home/yulcom/web/tender-ai/.claude/worktrees/repo-split
+docker-compose -p tenderai-lcupgrade-val down -v
+docker rmi $(docker images -q "repo-split-*" 2>/dev/null) 2>/dev/null || true
+```
+Confirmer ensuite que le stack live de l'utilisateur (sans suffixe) est toujours intact :
+```bash
+docker ps --format "{{.Names}}\t{{.Status}}" | grep -E "^tenderai-(postgres|minio|api|worker|frontend)\s"
+```
+Attendu : les 5 containers toujours présents, `Up`, avec une durée d'activité ininterrompue (pas de redémarrage récent).
 
 - [ ] **Step 5: Résumé final**
 
