@@ -8,7 +8,7 @@ from typing import Any
 
 from docling.datamodel.pipeline_options import PdfPipelineOptions
 from docling.document_converter import DocumentConverter, PdfFormatOption
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from ...agents.extraction import extract_tenders_structured
 from ...logging import get_logger

@@ -13,7 +13,7 @@ logger = get_logger(__name__)
 def generate_summary_with_llm(item: dict, state=None) -> str:
     """Generate LLM-based tender summary in French."""
     try:
-        from langchain.prompts import PromptTemplate
+        from langchain_core.prompts import PromptTemplate
 
         # Get LLM instance
         llm = get_llm_instance(temperature=0.3, max_tokens=300)

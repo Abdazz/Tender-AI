@@ -18,7 +18,7 @@ def check_duplicate_with_llm(item1: dict, item2: dict, state=None) -> tuple[bool
     Returns: (is_duplicate, confidence, reasoning)
     """
     try:
-        from langchain.prompts import PromptTemplate
+        from langchain_core.prompts import PromptTemplate
 
         # Get LLM instance
         llm = get_llm_instance(temperature=0.0, max_tokens=100)
