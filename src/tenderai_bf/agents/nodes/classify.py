@@ -352,7 +352,6 @@ def classify_node(state) -> dict:
         return state
 
     logger.info("Starting classify step", run_id=state.run_id)
-    time.time()
 
     try:
         # Choose classification method based on configuration

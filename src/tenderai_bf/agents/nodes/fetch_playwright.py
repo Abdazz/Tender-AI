@@ -17,7 +17,6 @@ Source configuration (source.patterns):
                                 Default true.
 """
 
-import contextlib
 from datetime import datetime
 
 from ...logging import get_logger
@@ -163,9 +162,16 @@ async def fetch_playwright(source: dict, run_id: str) -> dict:
                             wait_until="domcontentloaded",
                             timeout=wait_timeout,
                         )
-                        with contextlib.suppress(Exception):
+                        try:
                             await page.wait_for_selector(
                                 wait_selector, timeout=wait_timeout
+                            )
+                        except Exception as e:
+                            logger.debug(
+                                "Selector wait timed out, continuing anyway",
+                                selector=wait_selector,
+                                page_num=page_num,
+                                error=str(e),
                             )
                         if extra_wait > 0:
                             await page.wait_for_timeout(extra_wait)
@@ -216,9 +222,16 @@ async def fetch_playwright(source: dict, run_id: str) -> dict:
                                 "domcontentloaded", timeout=wait_timeout
                             )
 
-                        with contextlib.suppress(Exception):
+                        try:
                             await page.wait_for_selector(
                                 wait_selector, timeout=wait_timeout
+                            )
+                        except Exception as e:
+                            logger.debug(
+                                "Selector wait timed out, continuing anyway",
+                                selector=wait_selector,
+                                page_num=page_num,
+                                error=str(e),
                             )
 
                         if extra_wait > 0:

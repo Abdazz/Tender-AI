@@ -242,7 +242,8 @@ sources:
         from tenderai_bf.cli import main
 
         runner = CliRunner()
-        runner.invoke(main, ["seed-sources"])
+        result = runner.invoke(main, ["seed-sources"])
+        assert result.exit_code == 0, result.output
 
     insert_params = [
         p for p in captured_inserts if "card_selector" in str(p.get("patterns", ""))

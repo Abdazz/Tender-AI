@@ -510,18 +510,13 @@ def extract_item_links_node(state) -> dict:
                             # Add the joffres listing dict as-is for fetch_items to process
                             valid_links.append(link)
                             seen_urls.add(url)
-                    # Handle UNGM listings (dict with source='ungm')
-                    elif (
-                        isinstance(link, dict)
-                        and link.get("source") == "ungm"
-                        or isinstance(link, dict)
-                        and link.get("source") == "tavily"
-                        or (
-                            isinstance(link, dict)
-                            and link.get("source") == "playwright"
-                            or isinstance(link, dict)
-                            and link.get("source") == "playwright_detail"
-                        )
+                    # Handle UNGM / Tavily / Playwright listing + detail
+                    # results (identical handling)
+                    elif isinstance(link, dict) and link.get("source") in (
+                        "ungm",
+                        "tavily",
+                        "playwright",
+                        "playwright_detail",
                     ):
                         url = link.get("url")
                         if url and url not in seen_urls:

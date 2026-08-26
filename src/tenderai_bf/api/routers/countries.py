@@ -1,15 +1,16 @@
 """CRUD endpoints for countries and per-country settings."""
 
-import contextlib
-
 from fastapi import APIRouter, BackgroundTasks, HTTPException, status
 from sqlalchemy.exc import IntegrityError
 
 from ...country_store import MUTABLE_SECTIONS, CountryStore
+from ...logging import get_logger
 from ...models import Country
 from ..dependencies import AuthenticatedUser, DatabaseSession, SuperAdminUser
 from ..schemas.countries import CountryCreate, CountryRead, CountryUpdate
 from ..schemas.settings import SECTION_SCHEMAS
+
+logger = get_logger(__name__)
 
 router = APIRouter()
 
@@ -135,8 +136,14 @@ async def update_section(
     if section == "scheduler":
         from ...scheduler.schedule import reschedule_country_job
 
-        with contextlib.suppress(Exception):
+        try:
             reschedule_country_job(country_id, country.code, body)
+        except Exception as e:
+            logger.warning(
+                "Failed to reschedule country job after settings update",
+                country_id=country_id,
+                error=str(e),
+            )
     return body
 
 
