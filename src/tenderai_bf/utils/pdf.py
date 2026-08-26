@@ -311,7 +311,8 @@ def is_pdf_file(file_path: str) -> bool:
         with open(file_path, "rb") as f:
             header = f.read(4)
             return header == b"%PDF"
-    except:
+    except OSError as e:
+        logger.debug("Failed to read file header for PDF check", path=file_path, error=str(e))
         return False
 
 

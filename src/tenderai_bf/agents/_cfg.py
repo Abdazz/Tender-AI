@@ -15,9 +15,9 @@ def cfg(state: Any, section: str, key: str) -> Any:
     """
     try:
         return state.country_config[section][key]
-    except (KeyError, AttributeError):
+    except (KeyError, AttributeError) as e:
         country_id = getattr(state, "country_id", "?")
         raise RuntimeError(
             f"Missing DB config: country_id={country_id} "
             f"section='{section}' key='{key}' — run seed first"
-        )
+        ) from e

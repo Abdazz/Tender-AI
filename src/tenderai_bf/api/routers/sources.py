@@ -210,4 +210,4 @@ async def test_source(source_id: int, db: DatabaseSession):
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=f"Source test failed: {e!s}",
-        )
+        ) from e

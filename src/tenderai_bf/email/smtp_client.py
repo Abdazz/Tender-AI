@@ -613,7 +613,7 @@ Pour vous désabonner ou modifier vos préférences, contactez l'administrateur.
     </div>
 </body>
 </html>
-"""
+"""  # noqa: RUF001 — intentional em dash/emoji in display text
 
     return text_body, html_body
 
@@ -647,7 +647,7 @@ def send_report_email(
             if settings.environment == "development"
             else settings.email.subject_prefix
         )
-        subject = f"{subject_prefix} [{country_name}] – {timestamp_str}"
+        subject = f"{subject_prefix} [{country_name}] – {timestamp_str}"  # noqa: RUF001 — intentional em dash in display text
 
         # Generate email body
         text_body, html_body = _generate_report_email_body(

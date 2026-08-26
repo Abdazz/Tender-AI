@@ -1,6 +1,6 @@
 """FastAPI dependencies and utilities."""
 
-from typing import Annotated, Optional
+from typing import Annotated
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
@@ -125,7 +125,7 @@ def get_password_hash(password: str) -> str:
 
 # Type aliases for dependencies
 DatabaseSession = Annotated[Session, Depends(get_db)]
-CurrentUser = Annotated[Optional[dict], Depends(get_current_user)]
+CurrentUser = Annotated[dict | None, Depends(get_current_user)]
 AuthenticatedUser = Annotated[dict, Depends(require_auth)]
 AdminUser = Annotated[dict, Depends(require_admin)]
 SuperAdminUser = Annotated[dict, Depends(require_super_admin)]

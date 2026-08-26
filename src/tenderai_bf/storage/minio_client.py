@@ -446,9 +446,10 @@ class MinIOClient:
 
             deleted_count = 0
             for obj in objects:
-                if obj["last_modified"] < cutoff_date:
-                    if self.delete_object(obj["key"]):
-                        deleted_count += 1
+                if obj["last_modified"] < cutoff_date and self.delete_object(
+                    obj["key"]
+                ):
+                    deleted_count += 1
 
             logger.info(
                 "Cleanup completed",

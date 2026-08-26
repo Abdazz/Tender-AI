@@ -36,12 +36,12 @@ async def create_country(
         db.flush()
         db.commit()
         db.refresh(country)
-    except IntegrityError:
+    except IntegrityError as e:
         db.rollback()
         raise HTTPException(
             status.HTTP_409_CONFLICT,
             detail=f"Country with code '{body.code.upper()}' already exists",
-        )
+        ) from e
     CountryStore.seed_from_global(db, country.id)
     return country
 
@@ -124,7 +124,9 @@ async def update_section(
         try:
             schema_cls(**body)
         except Exception as e:
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e)
+            ) from e
     CountryStore.put_section(db, country_id, section, body, updated_by=user["username"])
     if section == "scheduler":
         from ...scheduler.schedule import reschedule_country_job

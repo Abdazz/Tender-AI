@@ -1,8 +1,8 @@
 """Database connection and session management."""
 
+import time
 from collections.abc import Generator
 from contextlib import contextmanager
-import time
 
 from sqlalchemy import create_engine, event, text
 from sqlalchemy.ext.declarative import declarative_base
@@ -97,7 +97,7 @@ def __getattr__(name):
 @contextmanager
 def get_db_context() -> Generator[Session, None, None]:
     """Get a database session with automatic cleanup (for context manager usage)."""
-    SessionLocal = get_session_factory()
+    SessionLocal = get_session_factory()  # noqa: N806 — SQLAlchemy idiom for a session factory
     session = SessionLocal()
 
     try:
@@ -113,7 +113,7 @@ def get_db_context() -> Generator[Session, None, None]:
 
 def get_db() -> Generator[Session, None, None]:
     """Get a database session for FastAPI dependency injection."""
-    SessionLocal = get_session_factory()
+    SessionLocal = get_session_factory()  # noqa: N806 — SQLAlchemy idiom for a session factory
     session = SessionLocal()
 
     try:

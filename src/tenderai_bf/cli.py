@@ -371,7 +371,7 @@ def create_admin(
             if row:
                 if not force:
                     click.echo(
-                        f"ℹ️  User '{username}' already exists. Use --force to overwrite the password."
+                        f"ℹ️  User '{username}' already exists. Use --force to overwrite the password."  # noqa: RUF001 — intentional emoji in display text
                     )
                     return
                 conn.execute(

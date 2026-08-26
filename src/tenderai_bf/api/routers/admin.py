@@ -184,7 +184,7 @@ async def test_email(request: EmailTestRequest, user: AuthenticatedUser):
         logger.error("Failed to send test email", error=str(e))
         raise HTTPException(
             status_code=500, detail=f"Failed to send test email: {e!s}"
-        )
+        ) from e
 
 
 @router.get("/logs")
@@ -216,7 +216,9 @@ async def clear_cache(user: AuthenticatedUser):
         }
     except Exception as e:
         logger.error("Failed to clear caches", error=str(e))
-        raise HTTPException(status_code=500, detail=f"Failed to clear caches: {e!s}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to clear caches: {e!s}"
+        ) from e
 
 
 @router.get("/settings")
@@ -282,7 +284,7 @@ async def update_section_settings(
     try:
         validated = schema_cls(**payload)
     except Exception as e:
-        raise HTTPException(status_code=422, detail=str(e))
+        raise HTTPException(status_code=422, detail=str(e)) from e
 
     SettingsStore.put_section(
         db, section, validated.model_dump(), updated_by=user["username"]

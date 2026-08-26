@@ -53,12 +53,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
 
     # Seed settings from current config if DB is empty, then seed all countries
     try:
-        from ..country_store import CountryStore as CS
+        from ..country_store import CountryStore
         from ..db import get_session_factory
         from ..models import Country as CountryModel
         from ..settings_store import SettingsStore
 
-        SessionLocal = get_session_factory()
+        SessionLocal = get_session_factory()  # noqa: N806 — SQLAlchemy idiom for a session factory
         with SessionLocal() as db_session:
             seeded = SettingsStore.seed_from_settings(db_session)
             if seeded:
@@ -69,7 +69,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
                 CountryModel.active == True  # noqa: E712
             ).all()
             for country in countries:
-                seeded_cs = CS.seed_from_global(db_session, country.id)
+                seeded_cs = CountryStore.seed_from_global(db_session, country.id)
                 if seeded_cs:
                     logger.info(
                         "Country settings seeded",

@@ -8,7 +8,10 @@ os.environ.setdefault("TENDERAI_ADMIN_PASSWORD", "test-admin-password-not-real")
 
 import pytest  # noqa: E402 — must follow env var setup above
 
-from tenderai_bf.agents.graph import TenderAIState, cfg  # noqa: E402 — must follow env var setup above
+from tenderai_bf.agents.graph import (  # noqa: E402 — must follow env var setup above
+    TenderAIState,
+    cfg,
+)
 
 
 def make_state(**country_config_override):

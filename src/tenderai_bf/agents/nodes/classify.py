@@ -63,7 +63,7 @@ _SUPPLIER_REGISTRATION_SIGNALS = [
 
 def _normalize_apostrophes(text: str) -> str:
     """Replace typographic/curly apostrophes with the standard ASCII apostrophe."""
-    return text.replace("’", "'").replace("‘", "'").replace("ʼ", "'")
+    return text.replace("’", "'").replace("‘", "'").replace("ʼ", "'")  # noqa: RUF001 — this line's purpose IS normalizing these exact unicode variants
 
 
 def _is_attribution_notice(item: dict) -> bool:
@@ -97,7 +97,9 @@ def _parse_deadline(item: dict) -> datetime | None:
         if not raw:
             # Second pass: bare ISO date — skip dates preceded by modification/publication keywords
             # (e.g. "Date de modification: 2026-06-05") to avoid false expiry filtering
-            _EXCLUDE_PREFIXES = ("modif", "publi", "créé", "créat", "posted", "annoncé", "soumis")
+            _EXCLUDE_PREFIXES = (  # noqa: N806 — module-level-style constant, scoped locally by design
+                "modif", "publi", "créé", "créat", "posted", "annoncé", "soumis"
+            )
             for date_match in re.finditer(r"(\d{4}[-/]\d{2}[-/]\d{2})", text):
                 preceding = text[max(0, date_match.start() - 40):date_match.start()].lower()
                 if not any(excl in preceding for excl in _EXCLUDE_PREFIXES):
@@ -169,15 +171,18 @@ def _is_geographic_mismatch(item: dict, country_name: str) -> bool:
 
     # 1. Explicit location field — skip if absent or placeholder
     location = (item.get("location") or "").strip()
-    if location and location.lower() not in ("n/a", "non disponible", "none", "-", ""):
-        if country_lower not in location.lower():
-            logger.debug(
-                "Geographic mismatch: location does not match target country",
-                location=location,
-                target=country_name,
-                item_id=item.get("id"),
-            )
-            return True
+    if (
+        location
+        and location.lower() not in ("n/a", "non disponible", "none", "-", "")
+        and country_lower not in location.lower()
+    ):
+        logger.debug(
+            "Geographic mismatch: location does not match target country",
+            location=location,
+            target=country_name,
+            item_id=item.get("id"),
+        )
+        return True
 
     # 2. UNDP country code in entity ("UNDP-ZWE/ZIMBABWE") or reference ("UNDP-LBR-00899")
     for field_name in ("entity", "reference", "ref_no"):
@@ -200,15 +205,16 @@ def _is_geographic_mismatch(item: dict, country_name: str) -> bool:
     # 3. Entity field is itself a country name (e.g. entity="Géorgie")
     entity_lower = (item.get("entity") or "").strip().lower()
     for _iso3, fragments in _ISO3_TO_FRAGMENTS.items():
-        if entity_lower in fragments:  # exact match: entity IS a country name
-            if not any(frag in country_lower for frag in fragments):
-                logger.debug(
-                    "Geographic mismatch: entity is a foreign country name",
-                    entity=entity_lower,
-                    target=country_name,
-                    item_id=item.get("id"),
-                )
-                return True
+        if entity_lower in fragments and not any(
+            frag in country_lower for frag in fragments
+        ):  # exact match: entity IS a country name, but not this target's fragments
+            logger.debug(
+                "Geographic mismatch: entity is a foreign country name",
+                entity=entity_lower,
+                target=country_name,
+                item_id=item.get("id"),
+            )
+            return True
 
     return False
 

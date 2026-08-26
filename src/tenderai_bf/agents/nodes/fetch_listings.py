@@ -645,8 +645,8 @@ def fetch_listings_node(state) -> dict:
         listings = asyncio.run(fetch_all_listings(state.sources, state.run_id))
 
         # Process results
-        successful_fetches = [l for l in listings if l["status"] == "success"]
-        failed_fetches = [l for l in listings if l["status"] == "failed"]
+        successful_fetches = [item for item in listings if item["status"] == "success"]
+        failed_fetches = [item for item in listings if item["status"] == "failed"]
 
         # Store raw listings data
         state.items_raw = listings

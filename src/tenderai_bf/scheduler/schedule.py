@@ -118,7 +118,7 @@ def start_scheduler() -> None:
     from ..db import get_session_factory
     from ..models import Country
 
-    SessionLocal = get_session_factory()
+    SessionLocal = get_session_factory()  # noqa: N806 — SQLAlchemy idiom for a session factory
     db_session = SessionLocal()
     try:
         countries = db_session.query(Country).filter(Country.active == True).all()  # noqa: E712 — SQLAlchemy column comparison, not a Python bool check

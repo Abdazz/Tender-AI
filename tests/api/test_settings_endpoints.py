@@ -23,7 +23,7 @@ def test_db():
         poolclass=StaticPool,
     )
     Base.metadata.create_all(engine)
-    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)  # noqa: N806 — SQLAlchemy idiom for a session factory
     session = SessionLocal()
     yield session, engine
     session.close()

@@ -51,7 +51,7 @@ def split_quotidien_into_tenders(text: str) -> list[dict]:
 
     # Strategy: Split by reference numbers (N°20XX-XXX/...)
     # This is more reliable than entity names
-    ref_pattern = r"N[°o]\s*(\d{4}[-–]\d+[^\\n]{0,100})"
+    ref_pattern = r"N[°o]\s*(\d{4}[-–]\d+[^\\n]{0,100})"  # noqa: RUF001 — en dash is a real alternative in source reference formats
 
     # Find all reference numbers and their positions
     references = []
@@ -207,7 +207,7 @@ def parse_quotidien_pdf_fallback(
             logger.info(f"Found AVIS section at position {avis_start}", run_id=run_id)
 
         # Split by reference numbers (N°20XX-XXX/...)
-        ref_pattern = r"N[°o]\s*(\d{4}[-–]\d+[^\n]{0,100})"
+        ref_pattern = r"N[°o]\s*(\d{4}[-–]\d+[^\n]{0,100})"  # noqa: RUF001 — en dash is a real alternative in source reference formats
 
         references = []
         for match in re.finditer(ref_pattern, avis_section):
@@ -322,7 +322,7 @@ def extract_tender_info(section_text: str, index: int) -> dict:
         info["title"] = lines[0][:200] if lines else "Appel d'offres"
 
     # Extract reference number (N°YYYY-XXX/...)
-    ref_pattern = r"N[°o]\s*(\d{4}[-–]\d+[^\s]*)"
+    ref_pattern = r"N[°o]\s*(\d{4}[-–]\d+[^\s]*)"  # noqa: RUF001 — en dash is a real alternative in source reference formats
     ref_match = re.search(ref_pattern, section_text)
     if ref_match:
         info["ref_no"] = ref_match.group(1).strip()

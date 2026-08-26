@@ -196,7 +196,7 @@ def extract_tender_info(text: str, entity_name: str) -> dict:
     }
 
     # Extract reference number
-    ref_match = re.search(r"N[°o]\s*(\d{4}[-–]\d+[^\n]{0,100})", text)
+    ref_match = re.search(r"N[°o]\s*(\d{4}[-–]\d+[^\n]{0,100})", text)  # noqa: RUF001 — en dash is a real alternative in source reference formats
     if ref_match:
         info["ref_no"] = ref_match.group(0).strip()
 

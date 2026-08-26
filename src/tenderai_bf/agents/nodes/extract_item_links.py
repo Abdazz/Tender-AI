@@ -537,10 +537,13 @@ def extract_item_links_node(state) -> dict:
                     elif isinstance(link, str):
                         # Basic URL validation
                         parsed = urlparse(link)
-                        if parsed.scheme in ("http", "https") and parsed.netloc:
-                            if link not in seen_urls:
-                                valid_links.append(link)
-                                seen_urls.add(link)
+                        if (
+                            parsed.scheme in ("http", "https")
+                            and parsed.netloc
+                            and link not in seen_urls
+                        ):
+                            valid_links.append(link)
+                            seen_urls.add(link)
 
                 # Add to global list
                 all_links.extend(valid_links)

@@ -143,7 +143,7 @@ def build_report(data: dict[str, Any]) -> bytes | None:
         document = Document()
 
         # Set document properties
-        document.core_properties.title = "TenderAI – YULCOM Technologies"
+        document.core_properties.title = "TenderAI – YULCOM Technologies"  # noqa: RUF001 — intentional em dash in display text
         document.core_properties.author = "TenderAI"
         document.core_properties.subject = (
             "Rapport de veille des appels d'offres IT/Ingénierie"
@@ -192,7 +192,7 @@ def _add_title_page(document: Document, data: dict[str, Any]) -> None:
     # Title
     title = document.add_heading("", level=0)
     title_run = title.runs[0] if title.runs else title.add_run()
-    title_run.text = "TenderAI – YULCOM Technologies"
+    title_run.text = "TenderAI – YULCOM Technologies"  # noqa: RUF001 — intentional em dash in display text
     title_run.font.size = Pt(24)
     title_run.font.bold = True
     title_run.font.color.rgb = RGBColor(0x2E, 0x74, 0xB5)

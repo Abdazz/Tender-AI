@@ -8,7 +8,6 @@ Dépendance optionnelle : poetry install --extras "full"
 
 import json
 from datetime import datetime
-from typing import Optional
 
 from pydantic import BaseModel
 
@@ -29,12 +28,12 @@ except ImportError:
 class TenderItem(BaseModel):
     """Schéma d'extraction LLM partagé html-tender / crawl4ai."""
     title: str
-    reference: Optional[str] = None
-    deadline: Optional[str] = None
-    entity: Optional[str] = None
-    country: Optional[str] = None
-    description: Optional[str] = None
-    document_url: Optional[str] = None
+    reference: str | None = None
+    deadline: str | None = None
+    entity: str | None = None
+    country: str | None = None
+    description: str | None = None
+    document_url: str | None = None
 
 
 _EXTRACTION_INSTRUCTION = (
