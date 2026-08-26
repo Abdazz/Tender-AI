@@ -214,7 +214,11 @@ def _is_hallucinated(tender: dict) -> bool:
     if any(s in url for s in _HALLUCINATION_SENTINELS["source_url"]):
         return True
     # Reject entries where all identifying fields are None/empty
-    identifying = [tender.get("entity"), tender.get("reference"), tender.get("tender_object")]
+    identifying = [
+        tender.get("entity"),
+        tender.get("reference"),
+        tender.get("tender_object"),
+    ]
     if all(not v or v in ("Inconnu", "None") for v in identifying):
         return True
     return False
@@ -313,8 +317,7 @@ RETOURNEZ UNIQUEMENT DU JSON VALIDE. Si aucun appel d'offres réel n'est présen
             # Filter hallucinated / placeholder tenders before Pydantic validation
             original_count = len(result_json.get("tenders", []))
             result_json["tenders"] = [
-                t for t in result_json.get("tenders", [])
-                if not _is_hallucinated(t)
+                t for t in result_json.get("tenders", []) if not _is_hallucinated(t)
             ]
             filtered = original_count - len(result_json["tenders"])
             if filtered:

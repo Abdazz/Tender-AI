@@ -329,7 +329,9 @@ def parse_pdf_with_rag(
             )
 
             # Split into chunks to avoid token limits
-            chunks = split_into_chunks(full_text, chunk_size=_chunk_size, chunk_overlap=_chunk_overlap)
+            chunks = split_into_chunks(
+                full_text, chunk_size=_chunk_size, chunk_overlap=_chunk_overlap
+            )
 
             logger.info(
                 "Text split into chunks for processing",
@@ -457,7 +459,9 @@ def parse_pdf_with_rag(
             source=source_name,
             query=_search_query,
         )
-        results = query_tenders_from_index(source_name=source_name, query=_search_query, top_k=_top_k)
+        results = query_tenders_from_index(
+            source_name=source_name, query=_search_query, top_k=_top_k
+        )
 
         # Extract context documents from Chroma results
         # Chroma returns: {'documents': [[doc1, doc2, ...]], 'metadatas': [...], 'distances': [...], 'ids': [...]}
@@ -518,7 +522,9 @@ def parse_pdf_with_rag(
         tenders = []
         if use_llm and relevant_contexts:
             tenders = extract_tenders_with_llm(
-                relevant_contexts=relevant_contexts, source_name=source_name, top_k=_top_k
+                relevant_contexts=relevant_contexts,
+                source_name=source_name,
+                top_k=_top_k,
             )
         else:
             logger.info("LLM extraction disabled or no context available")

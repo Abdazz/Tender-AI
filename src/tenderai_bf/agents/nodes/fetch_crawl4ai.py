@@ -18,6 +18,7 @@ logger = get_logger(__name__)
 try:
     from crawl4ai import AsyncWebCrawler
     from crawl4ai.extraction_strategy import LLMExtractionStrategy
+
     _CRAWL4AI_AVAILABLE = True
 except ImportError:
     AsyncWebCrawler = None  # type: ignore
@@ -27,6 +28,7 @@ except ImportError:
 
 class TenderItem(BaseModel):
     """Schéma d'extraction LLM partagé html-tender / crawl4ai."""
+
     title: str
     reference: str | None = None
     deadline: str | None = None
@@ -53,7 +55,9 @@ async def fetch_crawl4ai(source: dict, run_id: str) -> dict:
             "crawl4ai not installed — run: poetry install --extras full && crawl4ai-setup",
             run_id=run_id,
         )
-        return _error(source, "crawl4ai not installed — run: poetry install --extras full")
+        return _error(
+            source, "crawl4ai not installed — run: poetry install --extras full"
+        )
 
     source_name = source["name"]
     list_url = source["list_url"]
@@ -81,9 +85,12 @@ async def fetch_crawl4ai(source: dict, run_id: str) -> dict:
     if not ssl_verify:
         try:
             from crawl4ai import BrowserConfig
+
             crawler_kwargs["config"] = BrowserConfig(ignore_https_errors=True)
         except Exception as exc:
-            logger.warning("BrowserConfig unavailable, ssl_verify=False ignored", error=str(exc))
+            logger.warning(
+                "BrowserConfig unavailable, ssl_verify=False ignored", error=str(exc)
+            )
 
     listings: list[dict] = []
 
@@ -92,7 +99,9 @@ async def fetch_crawl4ai(source: dict, run_id: str) -> dict:
             try:
                 result = await crawler.arun(url=url, extraction_strategy=strategy)
                 if not result.extracted_content:
-                    logger.warning("crawl4ai: aucun contenu extrait", url=url, run_id=run_id)
+                    logger.warning(
+                        "crawl4ai: aucun contenu extrait", url=url, run_id=run_id
+                    )
                     continue
 
                 raw = json.loads(result.extracted_content)
@@ -101,23 +110,29 @@ async def fetch_crawl4ai(source: dict, run_id: str) -> dict:
                 for item in items:
                     if not item.get("title"):
                         continue
-                    listings.append({
-                        "url": item.get("document_url") or url,
-                        "title": item.get("title", ""),
-                        "tender_object": item.get("title", ""),
-                        "reference": item.get("reference", ""),
-                        "ref_no": item.get("reference", ""),
-                        "entity": item.get("entity") or patterns.get("entity", source_name),
-                        "location": item.get("country") or patterns.get("location", ""),
-                        "deadline": item.get("deadline", ""),
-                        "description": item.get("description", ""),
-                        "category": "Autre",
-                        "type": "appel_offres",
-                        "source": source_name,
-                        "parser_type": "crawl4ai",
-                    })
+                    listings.append(
+                        {
+                            "url": item.get("document_url") or url,
+                            "title": item.get("title", ""),
+                            "tender_object": item.get("title", ""),
+                            "reference": item.get("reference", ""),
+                            "ref_no": item.get("reference", ""),
+                            "entity": item.get("entity")
+                            or patterns.get("entity", source_name),
+                            "location": item.get("country")
+                            or patterns.get("location", ""),
+                            "deadline": item.get("deadline", ""),
+                            "description": item.get("description", ""),
+                            "category": "Autre",
+                            "type": "appel_offres",
+                            "source": source_name,
+                            "parser_type": "crawl4ai",
+                        }
+                    )
             except Exception as e:
-                logger.warning("crawl4ai fetch failed", url=url, error=str(e), run_id=run_id)
+                logger.warning(
+                    "crawl4ai fetch failed", url=url, error=str(e), run_id=run_id
+                )
 
     logger.info(
         "crawl4ai fetch complete",
@@ -141,6 +156,7 @@ async def fetch_crawl4ai(source: dict, run_id: str) -> dict:
 def _get_llm_config() -> tuple[str, str]:
     """Retourne (provider_string, api_token) depuis settings.llm."""
     from ...config import settings
+
     llm = settings.llm
     if llm.provider == "groq":
         return (f"groq/{llm.groq_model}", llm.groq_api_key.get_secret_value())

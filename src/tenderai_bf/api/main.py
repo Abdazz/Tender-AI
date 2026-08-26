@@ -65,9 +65,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
                 logger.info("Settings seeded from config", sections=seeded)
 
             # Seed country_settings for every active country that is missing rows
-            countries = db_session.query(CountryModel).filter(
-                CountryModel.active == True  # noqa: E712
-            ).all()
+            countries = (
+                db_session.query(CountryModel)
+                .filter(
+                    CountryModel.active == True  # noqa: E712
+                )
+                .all()
+            )
             for country in countries:
                 seeded_cs = CountryStore.seed_from_global(db_session, country.id)
                 if seeded_cs:

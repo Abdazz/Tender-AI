@@ -93,7 +93,8 @@ async def fetch_playwright(source: dict, run_id: str) -> dict:
 
             if scroll:
                 # Scroll incrementally to trigger lazy loading
-                await page.evaluate("""async () => {
+                await page.evaluate(
+                    """async () => {
                     await new Promise(resolve => {
                         let totalHeight = 0;
                         const distance = 400;
@@ -106,7 +107,8 @@ async def fetch_playwright(source: dict, run_id: str) -> dict:
                             }
                         }, 150);
                     });
-                }""")
+                }"""
+                )
 
             if extra_wait > 0:
                 await page.wait_for_timeout(extra_wait)
@@ -157,10 +159,14 @@ async def fetch_playwright(source: dict, run_id: str) -> dict:
                     for page_num in range(2, max_pages + 1):
                         next_url = pagination_url_template.format(page_num=page_num)
                         await page.goto(
-                            next_url, wait_until="domcontentloaded", timeout=wait_timeout
+                            next_url,
+                            wait_until="domcontentloaded",
+                            timeout=wait_timeout,
                         )
                         with contextlib.suppress(Exception):
-                            await page.wait_for_selector(wait_selector, timeout=wait_timeout)
+                            await page.wait_for_selector(
+                                wait_selector, timeout=wait_timeout
+                            )
                         if extra_wait > 0:
                             await page.wait_for_timeout(extra_wait)
 
@@ -200,7 +206,9 @@ async def fetch_playwright(source: dict, run_id: str) -> dict:
                             elif not next_href.startswith("http"):
                                 next_href = _urljoin(url, next_href)
                             await page.goto(
-                                next_href, wait_until="domcontentloaded", timeout=wait_timeout
+                                next_href,
+                                wait_until="domcontentloaded",
+                                timeout=wait_timeout,
                             )
                         else:
                             await next_elem.click()
@@ -209,7 +217,9 @@ async def fetch_playwright(source: dict, run_id: str) -> dict:
                             )
 
                         with contextlib.suppress(Exception):
-                            await page.wait_for_selector(wait_selector, timeout=wait_timeout)
+                            await page.wait_for_selector(
+                                wait_selector, timeout=wait_timeout
+                            )
 
                         if extra_wait > 0:
                             await page.wait_for_timeout(extra_wait)

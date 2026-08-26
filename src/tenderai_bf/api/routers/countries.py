@@ -114,10 +114,14 @@ async def update_section(
         )
     # Only admin or super_admin may write settings
     if user.get("role") not in ("super_admin", "admin"):
-        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Admin role required to update settings")
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN, detail="Admin role required to update settings"
+        )
     # Non-super_admin can only update their own country's settings
     if user.get("role") != "super_admin" and user.get("country_id") != country_id:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Access denied for this country")
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN, detail="Access denied for this country"
+        )
     country = _get_country_or_404(country_id, db)
     schema_cls = SECTION_SCHEMAS.get(section)
     if schema_cls:
@@ -145,10 +149,14 @@ async def trigger_run(
 ):
     # Only admin or super_admin may trigger pipeline runs
     if user.get("role") not in ("super_admin", "admin"):
-        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Admin role required to trigger runs")
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN, detail="Admin role required to trigger runs"
+        )
     # Non-super_admin can only trigger runs for their own country
     if user.get("role") != "super_admin" and user.get("country_id") != country_id:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Access denied for this country")
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN, detail="Access denied for this country"
+        )
     _get_country_or_404(country_id, db)
     from ...agents import get_pipeline
 

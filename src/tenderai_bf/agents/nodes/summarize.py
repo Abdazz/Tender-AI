@@ -33,7 +33,11 @@ def generate_summary_with_llm(item: dict, state=None) -> str:
         )
 
         # Get summarization prompts — from country_config (DB-first)
-        _summ = state.country_config.get("prompts", {}).get("summarization", {}) if state else {}
+        _summ = (
+            state.country_config.get("prompts", {}).get("summarization", {})
+            if state
+            else {}
+        )
         summarization_prompts = _summ if isinstance(_summ, dict) else {}
         system_prompt = summarization_prompts.get("system", "")
         user_template = summarization_prompts.get("user_template", "")

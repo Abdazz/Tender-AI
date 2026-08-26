@@ -152,7 +152,6 @@ def drop_database():
     if settings.is_production:
         raise RuntimeError("Cannot drop database in production environment")
 
-
     engine = get_engine()
     Base.metadata.drop_all(bind=engine)
     logger.error("All database tables dropped")

@@ -241,6 +241,10 @@ def extract_tender_info(text: str, entity_name: str) -> dict:
                     ] = f"{year}-{month.zfill(2)}-{day.zfill(2)}T23:59:59"
                     break
             except (ValueError, IndexError) as e:
-                logger.debug("Failed to parse deadline date, skipping", date_str=date_str, error=str(e))
+                logger.debug(
+                    "Failed to parse deadline date, skipping",
+                    date_str=date_str,
+                    error=str(e),
+                )
 
     return info

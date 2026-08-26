@@ -12,7 +12,9 @@ from .._cfg import cfg
 logger = get_logger(__name__)
 
 
-def check_duplicate_with_llm(item1: dict, item2: dict, state=None) -> tuple[bool, float, str]:
+def check_duplicate_with_llm(
+    item1: dict, item2: dict, state=None
+) -> tuple[bool, float, str]:
     """
     Use LLM to determine if two tenders are duplicates.
     Returns: (is_duplicate, confidence, reasoning)
@@ -38,7 +40,9 @@ def check_duplicate_with_llm(item1: dict, item2: dict, state=None) -> tuple[bool
         )
 
         # Prompts are sourced from country_config when state is available.
-        dedup_prompts = (state.country_config.get("prompts", {}) if state else {}).get("deduplication", {})
+        dedup_prompts = (state.country_config.get("prompts", {}) if state else {}).get(
+            "deduplication", {}
+        )
         system_prompt = dedup_prompts.get("system", "")
         user_template = dedup_prompts.get("user_template", "")
 
@@ -131,7 +135,9 @@ def deduplicate_node(state) -> dict:
         seen_hashes = set()
         similar_items = []
 
-        threshold = cfg(state, "pipeline", "deduplication_threshold") * 100  # Convert to percentage
+        threshold = (
+            cfg(state, "pipeline", "deduplication_threshold") * 100
+        )  # Convert to percentage
 
         for item in state.relevant_items:
             content_hash = item.get("content_hash")

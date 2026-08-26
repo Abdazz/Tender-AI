@@ -17,6 +17,7 @@ logger = get_logger(__name__)
 def _sanitize_xml(text: str) -> str:
     """Remove NULL bytes and XML-incompatible control characters from text."""
     import re
+
     # Remove NULL bytes and control chars except tab (0x09), LF (0x0A), CR (0x0D)
     return re.sub(r"[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]", "", text or "")
 

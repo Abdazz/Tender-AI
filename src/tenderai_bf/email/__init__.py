@@ -31,7 +31,9 @@ def test_email_configuration() -> bool:
         return False
 
 
-def send_email(to_address: str, subject: str, body: str, html_body: str | None = None) -> bool:
+def send_email(
+    to_address: str, subject: str, body: str, html_body: str | None = None
+) -> bool:
     """Send an email using the configured SMTP settings.
 
     Args:

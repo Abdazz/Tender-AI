@@ -100,7 +100,9 @@ def log_node_output(
         )
 
 
-def log_node_stats(node_name: str, stats: dict[str, Any], run_id: str | None = None) -> None:
+def log_node_stats(
+    node_name: str, stats: dict[str, Any], run_id: str | None = None
+) -> None:
     """Log node statistics/metrics.
 
     Args:

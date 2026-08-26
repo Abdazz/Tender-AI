@@ -21,7 +21,6 @@ def db():
 
 
 def test_app_settings_table_has_expected_columns(db):
-
     engine = db.get_bind()
     inspector = inspect(engine)
     cols = {c["name"] for c in inspector.get_columns("app_settings")}

@@ -85,7 +85,9 @@ async def require_admin(current_user: Annotated[dict, Depends(require_auth)]) ->
     return current_user
 
 
-async def require_super_admin(current_user: Annotated[dict, Depends(require_auth)]) -> dict:
+async def require_super_admin(
+    current_user: Annotated[dict, Depends(require_auth)],
+) -> dict:
     """Require super_admin role. Raises 403 if not super_admin."""
     if current_user.get("role") != "super_admin":
         raise HTTPException(

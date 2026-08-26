@@ -313,10 +313,15 @@ def _build_notices_table_html(notices: list) -> str:
                 if isinstance(deadline, str) and "T" in deadline:
                     deadline = _dt.fromisoformat(deadline).strftime("%d/%m/%Y")
             except (ValueError, TypeError) as e:
-                logger.debug("Failed to reformat deadline date, using raw value", deadline=deadline, error=str(e))
+                logger.debug(
+                    "Failed to reformat deadline date, using raw value",
+                    deadline=deadline,
+                    error=str(e),
+                )
 
         import html as _html
         from urllib.parse import urlparse as _urlparse
+
         raw_url = notice.get("source_url") or notice.get("url") or ""
         _scheme = _urlparse(raw_url).scheme.lower() if raw_url else ""
         if raw_url and _scheme in ("http", "https"):
@@ -392,7 +397,11 @@ def _build_notices_table_text(notices: list) -> str:
                 if isinstance(deadline, str) and "T" in deadline:
                     deadline = _dt.fromisoformat(deadline).strftime("%d/%m/%Y")
             except (ValueError, TypeError) as e:
-                logger.debug("Failed to reformat deadline date, using raw value", deadline=deadline, error=str(e))
+                logger.debug(
+                    "Failed to reformat deadline date, using raw value",
+                    deadline=deadline,
+                    error=str(e),
+                )
 
         url = notice.get("source_url") or notice.get("url") or "—"
 
@@ -656,8 +665,13 @@ def send_report_email(
 
         # Prepare attachment — filename uses country name when available
         import re as _re
+
         _country_slug = _re.sub(r"[^a-zA-Z0-9]+", "_", country_name or "").strip("_")
-        _filename_base = f"TenderAI_{_country_slug}" if _country_slug else settings.app_name.replace(" ", "_")
+        _filename_base = (
+            f"TenderAI_{_country_slug}"
+            if _country_slug
+            else settings.app_name.replace(" ", "_")
+        )
         attachments = [
             {
                 "filename": f"{_filename_base}_{timestamp_str}.docx",

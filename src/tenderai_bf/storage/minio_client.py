@@ -356,7 +356,12 @@ class MinIOClient:
 
         # Build filename: TenderAI_<Country>_YYYY-MM-DD-HH-MM.docx
         import re
-        country_slug = re.sub(r"[^a-zA-Z0-9]+", "_", country_name or "").strip("_") if country_name else ""
+
+        country_slug = (
+            re.sub(r"[^a-zA-Z0-9]+", "_", country_name or "").strip("_")
+            if country_name
+            else ""
+        )
         name_parts = ["TenderAI"]
         if country_slug:
             name_parts.append(country_slug)

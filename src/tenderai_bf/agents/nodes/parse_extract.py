@@ -492,18 +492,36 @@ def parse_html_item(
             # Skip very short DLs (e.g. "Date de modification: 2026-…") and navigation DLs
             if len(dl_text) > 80 and any(
                 kw in dl_text.lower()
-                for kw in ["type", "région", "durée", "méthode", "organisation", "objet", "description", "scope", "category"]
+                for kw in [
+                    "type",
+                    "région",
+                    "durée",
+                    "méthode",
+                    "organisation",
+                    "objet",
+                    "description",
+                    "scope",
+                    "category",
+                ]
             ):
                 description_parts.append(dl_text[:600])
 
         if not description_parts:
-            content_root = parser.css_first("main, #main, #content, [role='main'], article") or parser
+            content_root = (
+                parser.css_first("main, #main, #content, [role='main'], article")
+                or parser
+            )
             for elem in content_root.css("p, .description, .content")[:5]:
                 text = elem.text(strip=True)
                 # Skip navigation boilerplate patterns
                 if len(text) > 30 and not any(
                     nav in text.lower()
-                    for nav in ["aller au contenu", "passer à", "sélection de la langue", "rechercher dans"]
+                    for nav in [
+                        "aller au contenu",
+                        "passer à",
+                        "sélection de la langue",
+                        "rechercher dans",
+                    ]
                 ):
                     description_parts.append(text)
 
@@ -658,7 +676,8 @@ def parse_extract_node(state) -> dict:
                         "url": item["url"],
                         "content_hash": content_hash,
                         "title": details.get("title", ""),
-                        "tender_object": details.get("tender_object") or details.get("title", ""),
+                        "tender_object": details.get("tender_object")
+                        or details.get("title", ""),
                         "reference": details.get("reference", ""),
                         "ref_no": details.get("ref_no", details.get("reference", "")),
                         "entity": details.get("entity", ""),
@@ -677,13 +696,22 @@ def parse_extract_node(state) -> dict:
             elif parser_type == "tavily_pdf":
                 pdf_bytes = item.get("content")
                 if not isinstance(pdf_bytes, bytes):
-                    logger.warning("tavily_pdf item has no bytes content", url=item["url"], run_id=state.run_id)
+                    logger.warning(
+                        "tavily_pdf item has no bytes content",
+                        url=item["url"],
+                        run_id=state.run_id,
+                    )
                     continue
 
                 try:
                     full_text = extract_pdf_text_from_bytes(pdf_bytes)
                 except Exception as e:
-                    logger.error("Failed to extract text from Tavily PDF", url=item["url"], error=str(e), run_id=state.run_id)
+                    logger.error(
+                        "Failed to extract text from Tavily PDF",
+                        url=item["url"],
+                        error=str(e),
+                        run_id=state.run_id,
+                    )
                     continue
 
                 # Extract deadline from text using common procurement patterns
@@ -701,7 +729,10 @@ def parse_extract_node(state) -> dict:
                         break
 
                 # Extract reference number
-                ref_match = re.search(r"(?:Num[eé]ro\s+de\s+la\s+demande|[Rr][eé]f[eé]rence|[Ss]olicitation\s+[Nn]o\.?)\s*[:\-]?\s*([A-Z0-9/_\-]{4,30})", full_text)
+                ref_match = re.search(
+                    r"(?:Num[eé]ro\s+de\s+la\s+demande|[Rr][eé]f[eé]rence|[Ss]olicitation\s+[Nn]o\.?)\s*[:\-]?\s*([A-Z0-9/_\-]{4,30})",
+                    full_text,
+                )
                 reference = ref_match.group(1).strip() if ref_match else ""
 
                 parsed_items.append(
@@ -740,7 +771,9 @@ def parse_extract_node(state) -> dict:
                 if isinstance(content_text, bytes):
                     content_text = content_text.decode("utf-8", errors="replace")
 
-                source_name = item.get("title") or item.get("source_name") or "Tavily source"
+                source_name = (
+                    item.get("title") or item.get("source_name") or "Tavily source"
+                )
                 listing_items = parse_tavily_listing(
                     page_content=content_text,
                     source_url=item["url"],
