@@ -160,7 +160,7 @@ if __name__ == "__main__":
 
     uvicorn.run(
         "tenderai_bf.api.main:app",
-        host="0.0.0.0",
+        host="0.0.0.0",  # noqa: S104 — dev-only entrypoint; production runs via uvicorn/Docker with proper network config
         port=8000,
         reload=settings.debug,
         log_level="info",

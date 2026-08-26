@@ -414,7 +414,7 @@ def parse_html_item(
                 "title": details.get("title", title),
                 "ref_no": details.get(
                     "reference",
-                    f"REF-{hashlib.md5(url.encode()).hexdigest()[:8].upper()}",
+                    f"REF-{hashlib.md5(url.encode(), usedforsecurity=False).hexdigest()[:8].upper()}",
                 ),
                 "entity": details.get("entity", "Unknown"),
                 "category": details.get("category", "Services"),
@@ -515,7 +515,7 @@ def parse_html_item(
             "id": str(uuid.uuid4()),
             "url": url,
             "title": title,
-            "ref_no": f"REF-{hashlib.md5(url.encode()).hexdigest()[:8].upper()}",
+            "ref_no": f"REF-{hashlib.md5(url.encode(), usedforsecurity=False).hexdigest()[:8].upper()}",
             "entity": entity,
             "category": "Services",
             "description": description,

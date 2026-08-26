@@ -80,7 +80,7 @@ def _build_token(user: User) -> LoginResponse:
     )
     return LoginResponse(
         access_token=token,
-        token_type="bearer",
+        token_type="bearer",  # noqa: S106 — OAuth2 token type constant, not a credential
         expires_in=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
         role=user.role,
         password_reset_required=user.password_reset_required,

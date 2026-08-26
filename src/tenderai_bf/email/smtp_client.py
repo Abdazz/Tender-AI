@@ -312,8 +312,8 @@ def _build_notices_table_html(notices: list) -> str:
 
                 if isinstance(deadline, str) and "T" in deadline:
                     deadline = _dt.fromisoformat(deadline).strftime("%d/%m/%Y")
-            except Exception:
-                pass
+            except (ValueError, TypeError) as e:
+                logger.debug("Failed to reformat deadline date, using raw value", deadline=deadline, error=str(e))
 
         import html as _html
         from urllib.parse import urlparse as _urlparse
@@ -391,8 +391,8 @@ def _build_notices_table_text(notices: list) -> str:
 
                 if isinstance(deadline, str) and "T" in deadline:
                     deadline = _dt.fromisoformat(deadline).strftime("%d/%m/%Y")
-            except Exception:
-                pass
+            except (ValueError, TypeError) as e:
+                logger.debug("Failed to reformat deadline date, using raw value", deadline=deadline, error=str(e))
 
         url = notice.get("source_url") or notice.get("url") or "—"
 
