@@ -199,7 +199,9 @@ def _extract_tenders_from_page(
                     tenders.append(item)
             return tenders
         except Exception as e:
-            logger.error("LLM extraction failed (Groq)", source=source_name, error=str(e))
+            logger.error(
+                "LLM extraction failed (Groq)", source=source_name, error=str(e)
+            )
             return []
     else:
         try:
@@ -207,7 +209,9 @@ def _extract_tenders_from_page(
             result = structured_llm.invoke(prompt)
             return result.tenders
         except Exception as e:
-            logger.error("Structured LLM extraction failed", source=source_name, error=str(e))
+            logger.error(
+                "Structured LLM extraction failed", source=source_name, error=str(e)
+            )
             return []
 
 
@@ -227,7 +231,9 @@ def parse_tavily_listing(
     Falls back to an empty list if the LLM finds nothing or fails.
     """
     if not page_content or not page_content.strip():
-        logger.warning("Empty page content for tavily listing", source=source_name, run_id=run_id)
+        logger.warning(
+            "Empty page content for tavily listing", source=source_name, run_id=run_id
+        )
         return []
 
     logger.info(
@@ -238,7 +244,9 @@ def parse_tavily_listing(
     )
 
     llm_provider = (llm_cfg or {}).get("provider", "groq")
-    tenders = _extract_tenders_from_page(page_content, source_name, source_url, llm_provider)
+    tenders = _extract_tenders_from_page(
+        page_content, source_name, source_url, llm_provider
+    )
 
     logger.info(
         f"LLM returned {len(tenders)} notices from listing page",
@@ -248,6 +256,7 @@ def parse_tavily_listing(
 
     # Pre-compute base origin from source_url for resolving relative paths
     from urllib.parse import urlparse
+
     _parsed_base = urlparse(source_url)
     _base_origin = f"{_parsed_base.scheme}://{_parsed_base.netloc}"
 
@@ -262,6 +271,7 @@ def parse_tavily_listing(
                 raw_url = _base_origin + raw_url
             elif not raw_url.startswith("http"):
                 from urllib.parse import urljoin
+
                 raw_url = urljoin(source_url, raw_url)
         item_url = raw_url or source_url
 

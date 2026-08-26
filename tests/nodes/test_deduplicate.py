@@ -169,11 +169,13 @@ if __name__ == "__main__":
 # DB-first cfg() tests — use TenderAIState, not MockState
 # ---------------------------------------------------------------------------
 
-import os
+import os  # noqa: E402 — grouped with the env var setup it configures below, not with the file's top-of-file imports
 
 os.environ.setdefault("TENDERAI_ENVIRONMENT", "test")
 os.environ.setdefault("TENDERAI_DATABASE_URL", "sqlite:///test.db")
-os.environ.setdefault("TENDERAI_JWT_SECRET", "test-jwt-secret-not-used-for-real-auth-only-pytest-xxxxxxxx")
+os.environ.setdefault(
+    "TENDERAI_JWT_SECRET", "test-jwt-secret-not-used-for-real-auth-only-pytest-xxxxxxxx"
+)
 os.environ.setdefault("TENDERAI_ADMIN_PASSWORD", "test-admin-password-not-real")
 
 import hashlib  # noqa: E402
@@ -194,9 +196,14 @@ COUNTRY_CONFIG_DEDUP = {
         "max_file_size_mb": 10,
     },
     "llm": {
-        "provider": "groq", "groq_model": "llama-3.3-70b-versatile",
-        "openai_model": "gpt-4o", "ollama_model": "llama3", "ollama_base_url": "",
-        "temperature": 0.1, "max_tokens": 2000, "timeout": 60,
+        "provider": "groq",
+        "groq_model": "llama-3.3-70b-versatile",
+        "openai_model": "gpt-4o",
+        "ollama_model": "llama3",
+        "ollama_base_url": "",
+        "temperature": 0.1,
+        "max_tokens": 2000,
+        "timeout": 60,
     },
     "prompts": {
         "deduplication": {"system": "", "user_template": ""},
@@ -208,7 +215,8 @@ COUNTRY_CONFIG_DEDUP = {
 
 
 def test_deduplicate_hash_only_uses_country_config():
-    def h(s): return hashlib.sha256(s.encode()).hexdigest()
+    def h(s):
+        return hashlib.sha256(s.encode()).hexdigest()
 
     state = TenderAIState(
         country_id=1,
