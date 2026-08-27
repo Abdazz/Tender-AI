@@ -67,9 +67,16 @@ worktree-repo-split ┘  (= staging + chantier 3, tâches 1-9/16, PAS mergé ail
 ### Chantier 4 — Audit qualité des pipelines
 - Pas commencé. Aucun spec/plan écrit à ce jour.
 
+## Règle de workflow git (obligatoire, tous repos)
+
+Chaque repo du projet — ce monorepo **et** chacun des 3 repos produits par le chantier 1 (`tenderai-backend`, `tenderai-frontend`, `tenderai-infra`) — doit avoir une branche `staging`. Tout travail est d'abord fusionné sur `staging` (déployée, testée en conditions réelles), puis promu vers `main` seulement après validation. Jamais de fusion/push direct sur `main`. Documentée dans `CLAUDE.md`.
+
+**Gap constaté (2026-08-27) :** les 3 nouveaux repos n'ont pour l'instant qu'une branche `main`, pas de `staging`. À créer avant tout nouveau travail dessus.
+
 ## Actions immédiates suggérées
 
-1. Committer le plan non versionné du chantier 3 (`docs/superpowers/plans/2026-08-27-multi-company-pipeline-split.md`) dans le worktree.
-2. Reprendre le chantier 3 à partir de la tâche 9 (vérifier son état exact, la journaliser/reviewer, puis continuer jusqu'à la tâche 16).
-3. Réconcilier `main` et `staging` (doublon de commits docs du chantier 1).
-4. Décider quand déclencher les tâches 12-14 du chantier 1 (cutover + archivage) — nécessite une confirmation explicite, séparée de ce document.
+1. Créer une branche `staging` sur `tenderai-backend`, `tenderai-frontend`, `tenderai-infra` (actuellement absente sur les 3).
+2. Committer le plan non versionné du chantier 3 (`docs/superpowers/plans/2026-08-27-multi-company-pipeline-split.md`) dans le worktree.
+3. Reprendre le chantier 3 à partir de la tâche 9 (vérifier son état exact, la journaliser/reviewer, puis continuer jusqu'à la tâche 16).
+4. Réconcilier `main` et `staging` sur ce monorepo (doublon de commits docs du chantier 1).
+5. Décider quand déclencher les tâches 12-14 du chantier 1 (cutover + archivage) — nécessite une confirmation explicite, séparée de ce document.
