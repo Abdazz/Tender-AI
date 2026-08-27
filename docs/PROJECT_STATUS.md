@@ -73,9 +73,19 @@ Chaque repo du projet — ce monorepo **et** chacun des 3 repos produits par le 
 
 **Résolu (2026-08-27) :** branche `staging` créée (depuis `main`) et poussée sur les 3 repos. Clones locaux créés dans `/home/yulcom/web/tenderai/` (`tenderai-backend`, `tenderai-frontend`, `tenderai-infra`) — ils n'existaient nulle part localement avant (le chantier 1 avait travaillé depuis des dossiers `/tmp/tenderai-*-work` jetables, nettoyés après usage). `staging` n'a pas été mise comme branche par défaut sur GitHub — à faire si on veut que les PR ciblent `staging` par défaut.
 
+## Règle de séquencement (décidée 2026-08-27)
+
+`tenderai-backend` est resté figé à l'état de son extraction (24/08) — il n'a ni le chantier 2 (upgrade LangChain/LangGraph ^0.2→^1.3, nettoyage lint) ni le chantier 3 (pipeline-split, en cours). Aucun re-sync n'a eu lieu depuis. Séquence décidée avec l'utilisateur :
+
+1. **Finir le chantier 3 sur le monorepo** (worktree `.claude/worktrees/repo-split`), jusqu'à la tâche 16, puis fusionner sur `staging` du monorepo. Ne pas migrer le travail en cours vers `tenderai-backend` à mi-parcours — le refaire à zéro y perdrait l'historique de review déjà validé.
+2. **Re-synchroniser `tenderai-backend`** depuis `staging` du monorepo à ce moment-là — un seul re-sync qui rattrape le chantier 2 ET le chantier 3 en une fois.
+3. **À partir de là, plus aucun travail backend/pipeline sur le monorepo.** Le chantier 4 (audit qualité pipelines, pas commencé) et tout travail futur multi-company/pipeline se font directement sur `tenderai-backend` (branche `staging`).
+4. **Ensuite seulement**, cutover du serveur staging (tâche 12 du chantier 1) vers les 3 nouveaux repos.
+
 ## Actions immédiates suggérées
 
 1. Committer le plan non versionné du chantier 3 (`docs/superpowers/plans/2026-08-27-multi-company-pipeline-split.md`) dans le worktree.
 2. Reprendre le chantier 3 à partir de la tâche 9 (vérifier son état exact, la journaliser/reviewer, puis continuer jusqu'à la tâche 16).
-3. Réconcilier `main` et `staging` sur ce monorepo (doublon de commits docs du chantier 1).
-4. Décider quand déclencher les tâches 12-14 du chantier 1 (cutover + archivage) — nécessite une confirmation explicite, séparée de ce document.
+3. Une fois le chantier 3 terminé et fusionné sur `staging` du monorepo : re-synchroniser `tenderai-backend` (chantier 2 + 3 d'un coup).
+4. Réconcilier `main` et `staging` sur ce monorepo (doublon de commits docs du chantier 1).
+5. Cutover staging (tâche 12 du chantier 1) — seulement après les étapes 1-3 ci-dessus.
