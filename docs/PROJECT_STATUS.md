@@ -2,14 +2,14 @@
 
 **Document de suivi central.** À mettre à jour à chaque session qui avance un chantier — ne pas laisser l'état se déduire uniquement des messages de commit.
 
-**Dernière mise à jour :** 2026-08-28 (session 2), par une session Claude Code — cutover staging (tâche 12) exécuté côté backend/infra : CI `tenderai-backend` réparée (accès GHCR + 7 autres bugs infra), images `:staging` `api`/`worker` poussées, déploiement `tenderai-infra` sur le serveur staging réussi, `/health` répond 200. **Mais bug découvert côté frontend : le cutover staging n'est PAS complet** — voir section "Chantier 1" ci-dessous.
+**Dernière mise à jour :** 2026-08-28 (session 3), par une session Claude Code — **tâche 12 (cutover staging) terminée et validée.** Le bug frontend (CI ne se déclenchait pas sur `staging`, permission GHCR refusée sur `tenderai-bf-frontend`) a été corrigé, l'image `:staging` reconstruite et poussée, `tenderai-infra` redéployé, et la validation visuelle sur `https://stagingtenderai.yulcom.net` confirme le multi-company : sélecteur de pays, page `/countries` (Burkina Faso + Canada), filtrage Sources/Paramètres par pays, rôle `super_admin`. Les 3 repos GitHub sont maintenant le cutover staging complet. Tâches 13 (cutover prod) et 14 (archivage monorepo) restent bloquées en attente de confirmation explicite de l'utilisateur.
 
 ## Vue d'ensemble — refonte SaaS (4 chantiers)
 
 | # | Chantier | État | Porté par |
 |---|---|---|---|
 | 0 | Multi-company — data model (préalable aux 4 chantiers) | ✅ Terminé | `main`, `staging` (monorepo) |
-| 1 | Séparation du monorepo en 3 repos | 🟡 11/14 tâches — tâche 12 (cutover staging) à moitié faite : backend+infra OK, **frontend pas rebuild, CI cassée** | 3 repos GitHub séparés |
+| 1 | Séparation du monorepo en 3 repos | 🟡 12/14 tâches — tâche 12 (cutover staging) ✅ **terminée et validée** (backend+infra+frontend). Tâches 13/14 bloquées, attente confirmation utilisateur | 3 repos GitHub séparés |
 | 2 | Modernisation des dépendances | ✅ Terminé (2 sous-projets) | Synced dans `tenderai-backend/staging` |
 | 3 | Pipeline split (harvest/delivery multi-company) | ✅ **Terminé** (16/16 tâches + revue finale + fix wave) | `tenderai-backend`, branche `staging` (poussé sur GitHub) |
 | 4 | Audit qualité des pipelines | ⬜ Pas commencé | À faire sur `tenderai-backend` |
@@ -58,29 +58,24 @@ tenderai-frontend, tenderai-infra : état de l'extraction du 24/08,
 - Journal d'exécution détaillé (scratch, non versionné) : `.superpowers/sdd/2026-08-24-repo-split/progress.md` dans le worktree — **n'existe que localement sur cette machine, pas dans git.**
 - Tâches 1-11 : ✅ terminées. Les 3 repos GitHub (`tenderai-backend`, `tenderai-frontend`, `tenderai-infra`) existent, sont peuplés, testés (129-130 tests passants), CI en place. Secrets GitHub Actions migrés vers `tenderai-infra` (tâche 11).
 - Tâches 12-14 : ⚠️ **bloquées volontairement**, nécessitent une confirmation explicite avant exécution (irréversibles / touchent la prod) :
-  - Tâche 12 : cutover staging — 🟡 **backend+infra fait le 2026-08-28, frontend PAS fait** (détail ci-dessous)
-  - Tâche 13 : cutover production
-  - Tâche 14 : archivage du monorepo original
+  - Tâche 12 : cutover staging — ✅ **terminée et validée le 2026-08-28** (détail ci-dessous)
+  - Tâche 13 : cutover production — reste bloquée, attente confirmation explicite
+  - Tâche 14 : archivage du monorepo original — reste bloquée, attente confirmation explicite
 - **Le monorepo `Tender-AI` reste le dépôt de production tant que ces 3 tâches n'ont pas été exécutées.**
 
-#### Tâche 12 (cutover staging) — session du 2026-08-28 : backend/infra fait, frontend en panne
+#### Tâche 12 (cutover staging) — ✅ terminée le 2026-08-28 (session 3)
 
-**Ce qui a été résolu cette session (8 bugs infra sur `tenderai-backend`/`tenderai-infra`) :**
-`.env` absent avant `docker compose`, override compose serveur, création de branche `staging`, CI qui ne se déclenchait pas sur push `staging`, mypy bloquant (494 erreurs préexistantes → non-bloquant), suite de tests 25 min → 15 s (tests lents/intégration filtrés), accès GHCR "Manage Actions access" refusé pour `tenderai-backend` (`permission_denied: write_package` sur `tenderai-bf-api`/`tenderai-bf-worker`, corrigé manuellement par l'utilisateur dans l'UI GitHub — **le CLI/API n'a aucun endpoint pour ça sur un compte perso, seule l'UI web fonctionne**). Vérifié par un re-run complet : `tenderai-backend` CI verte (lint/test + push des 2 images `:staging`), déploiement `tenderai-infra` → serveur staging réussi, `curl https://stagingtenderai.yulcom.net/health` → `200 healthy` (DB, MinIO, SMTP tous OK).
+**Session 2 (backend/infra) :** 8 bugs infra résolus sur `tenderai-backend`/`tenderai-infra` — `.env` absent avant `docker compose`, override compose serveur, création de branche `staging`, CI qui ne se déclenchait pas sur push `staging`, mypy bloquant (494 erreurs préexistantes → non-bloquant), suite de tests 25 min → 15 s (tests lents/intégration filtrés), accès GHCR "Manage Actions access" refusé pour `tenderai-backend` (`permission_denied: write_package` sur `tenderai-bf-api`/`tenderai-bf-worker`, corrigé manuellement par l'utilisateur dans l'UI GitHub — **le CLI/API n'a aucun endpoint pour ça sur un compte perso, seule l'UI web fonctionne**). Vérifié par un re-run complet : `tenderai-backend` CI verte, images `:staging` `api`/`worker` poussées, déploiement `tenderai-infra` réussi, `/health` → 200.
 
-**Bug découvert et NON résolu : le frontend déployé sur staging est un build de plus de 3 mois, sans aucun des changements multi-company.**
-- `tenderai-frontend/.github/workflows/ci.yml` (post-split) ne se déclenche que sur push vers `main` (`on.push.branches: [main]`) — jamais sur `staging`, contrairement à `tenderai-backend/ci.yml` qui a été corrigé pour inclure `staging`. Un seul run existe dans l'historique Actions de ce repo, sur `main`, et il a échoué (`gh run list --repo Abdazz/tenderai-frontend` → 1 seul run, `main`, `failure`).
-- Le tag `:staging` de `ghcr.io/abdazz/tenderai-bf-frontend` actuellement servi vient donc de l'ancien monorepo (`ci-cd.yml`), dont le job `build-and-push` ne tourne que sur tag `v*`, `workflow_dispatch`, ou commit contenant `[build]` dans le message — pas sur chaque push. Le dernier commit `[build]` dans l'historique est `0004854` du **2026-05-21**.
-- Or tous les commits multi-company du frontend sont postérieurs à cette date : `CountryContext`/`CountrySelector`/pages `/countries` (2026-06-01), rôle `super_admin` + `country_id` JWT + guards middleware (2026-06-02), filtrage settings/sources par pays (2026-06-01/02), éditeur de requêtes Tavily (2026-06-03), gestion des destinataires (2026-06-21), adaptation Dockerfile post-split (2026-08-24).
-- **Conclusion : l'image frontend en prod sur staging n'a AUCUNE des fonctionnalités multi-company/multi-pays.** Le health check `/health` de l'API ne détecte pas ce problème (il ne teste que backend/DB/MinIO/SMTP, pas le frontend).
+**Session 3 (frontend) :** bug identique trouvé et corrigé côté frontend.
+- Root cause identique à celle du backend : `tenderai-frontend/.github/workflows/ci.yml` ne se déclenchait que sur push `main`, jamais `staging` — corrigé en ajoutant `staging` à `on.push.branches` (commit `7d016e6`, poussé sur `origin/staging`).
+- L'unique run historique (sur `main`, `0004854`, 2026-05-21) avait échoué avec la **même erreur GHCR** que le backend : `permission_denied: write_package` sur `ghcr.io/abdazz/tenderai-bf-frontend`. Confirmé par un premier re-run post-fix (run `33192240965`) qui a échoué avec la même erreur — l'utilisateur a accordé l'accès Write à `tenderai-frontend` sur le package `tenderai-bf-frontend` dans l'UI GitHub (identique à la procédure déjà suivie pour `tenderai-bf-api`/`tenderai-bf-worker`), puis un `gh run rerun` a réussi : image `:staging` construite et poussée.
+- `tenderai-infra` redéployé (`gh workflow run deploy.yml --ref staging -f environment=staging -f image_tag=staging`, run `33193898122`, succès) pour tirer le nouveau frontend. `/health` reconfirmé 200 (DB/MinIO/SMTP healthy).
+- **Validation visuelle effectuée dans le navigateur** sur `https://stagingtenderai.yulcom.net` : sélecteur de pays fonctionnel (Burkina Faso ↔ Canada), page `/countries` affichant les 2 pays actifs, Sources et Paramètres filtrés par pays sélectionné (`Pays: Canada` visible), rôle `super_admin` visible sur la page Utilisateurs. Toutes les fonctionnalités multi-company/multi-pays sont confirmées live sur staging.
 
-**Action à faire pour compléter la tâche 12 (prochaine session) :**
-1. Corriger `tenderai-frontend/.github/workflows/ci.yml` : ajouter `staging` à `on.push.branches` (copier le pattern déjà appliqué sur `tenderai-backend/ci.yml`).
-2. Comprendre pourquoi l'unique run sur `main` a échoué (`gh run view <id> --repo Abdazz/tenderai-frontend --log-failed`) avant de compter sur cette CI.
-3. Déclencher un build (push trivial sur `staging`, ou `gh workflow run` si un `workflow_dispatch` est ajouté) et vérifier que l'image `:staging` de `tenderai-bf-frontend` est bien poussée sur GHCR.
-4. Re-déclencher le déploiement `tenderai-infra` (`gh workflow run deploy.yml --repo Abdazz/tenderai-infra --ref staging -f environment=staging -f image_tag=staging`) pour que le nouveau frontend soit tiré.
-5. Valider visuellement dans le navigateur sur `https://stagingtenderai.yulcom.net` : sélecteur de pays, page `/countries`, filtrage settings/sources par pays, rôle `super_admin`.
-6. Seulement après ça, la tâche 12 est vraiment terminée et les tâches 13 (cutover prod) et 14 (archivage monorepo) peuvent être envisagées — avec confirmation explicite de l'utilisateur au préalable, comme déjà décidé.
+**Le cutover staging (tâche 12) est maintenant intégralement complet** — backend, infra, et frontend tous rebuild/redéployés depuis les 3 nouveaux repos séparés. Les tâches 13 (cutover prod) et 14 (archivage monorepo) restent bloquées en attente de confirmation explicite de l'utilisateur.
+
+**Point non résolu, hors scope de la tâche 12, soulevé par l'utilisateur (2026-08-28) :** le nom "BF" (Burkina Faso) reste présent partout — package Python `tenderai_bf` (41+ fichiers dans `tenderai-backend`), préfixe d'image GHCR `ghcr.io/abdazz/tenderai-bf`, noms de packages `tenderai-bf-api`/`-worker`/`-frontend`. De plus, les 3 nouveaux repos publient vers les **mêmes packages GHCR** que l'ancien monorepo (le préfixe d'image n'a pas été changé lors du repo-split — ce n'était pas une contrainte technique, juste une config héritée telle quelle). Un nettoyage/renommage a été proposé par l'utilisateur ; classé comme travail **architectural** (multi-repos + touche le serveur de prod/staging en cours d'exécution) nécessitant sa propre spec avant exécution — séquencé après la clôture de la tâche 12. À reprendre dans une session future.
 
 ### Chantier 2 — Modernisation des dépendances
 - Sous-projet A — upgrade LangChain/LangGraph : spec `docs/superpowers/specs/2026-08-25-langchain-langgraph-upgrade-design.md`, plan `docs/superpowers/plans/2026-08-25-langchain-langgraph-upgrade.md`. ✅ Terminé, testé (0 régression vs baseline), mergé dans `staging`.
@@ -116,7 +111,8 @@ Décision initiale : finir le chantier 3 sur le monorepo puis re-sync `tenderai-
 
 ## Actions immédiates suggérées
 
-1. **Finir la tâche 12 (cutover staging) côté frontend** — voir la sous-section détaillée dans "Chantier 1" ci-dessus. Backend+infra sont déjà cutover et validés (`/health` 200) ; il manque uniquement de corriger `tenderai-frontend/ci.yml` (trigger sur `staging`), rebuild, redéployer, et valider visuellement le multi-company dans le navigateur.
-2. Réconcilier `main` et `staging` sur ce monorepo (doublon de commits docs du chantier 1) — nettoyage différé, non bloquant.
-3. Chantier 4 (audit qualité des pipelines) — pas commencé, à démarrer sur `tenderai-backend` quand souhaité.
-4. Tâches 13 (cutover prod) et 14 (archivage monorepo) restent bloquées en attente de confirmation explicite de l'utilisateur, et ne doivent pas être lancées avant que la tâche 12 soit *entièrement* validée (frontend inclus).
+1. **Tâche 12 (cutover staging) est terminée et validée** (backend+infra+frontend, voir "Chantier 1" ci-dessus) — rien à faire ici.
+2. **Nettoyage/renommage "BF"** — voir note de fin de la sous-section tâche 12. Proposé par l'utilisateur le 2026-08-28, classé architectural (spec requise avant exécution), pas encore démarré.
+3. Réconcilier `main` et `staging` sur ce monorepo (doublon de commits docs du chantier 1) — nettoyage différé, non bloquant.
+4. Chantier 4 (audit qualité des pipelines) — pas commencé, à démarrer sur `tenderai-backend` quand souhaité.
+5. Tâches 13 (cutover prod) et 14 (archivage monorepo) restent bloquées en attente de confirmation explicite de l'utilisateur.
