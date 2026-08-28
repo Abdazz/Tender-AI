@@ -2,7 +2,7 @@
 
 **Document de suivi central.** À mettre à jour à chaque session qui avance un chantier — ne pas laisser l'état se déduire uniquement des messages de commit.
 
-**Dernière mise à jour :** 2026-08-27, par une session Claude Code (finalisation du chantier "multi-company data model" + audit de l'ensemble des chantiers en cours + bascule du chantier 3 vers `tenderai-backend`).
+**Dernière mise à jour :** 2026-08-28, par une session Claude Code (achèvement complet du chantier 3 sur `tenderai-backend` : tâches 10-16, revue finale globale, 1 vague de correction).
 
 ## Vue d'ensemble — refonte SaaS (4 chantiers)
 
@@ -11,7 +11,7 @@
 | 0 | Multi-company — data model (préalable aux 4 chantiers) | ✅ Terminé | `main`, `staging` (monorepo) |
 | 1 | Séparation du monorepo en 3 repos | 🟡 11/14 tâches — cutover en attente | 3 repos GitHub séparés |
 | 2 | Modernisation des dépendances | ✅ Terminé (2 sous-projets) | Synced dans `tenderai-backend/staging` |
-| 3 | Pipeline split (harvest/delivery multi-company) | 🟡 9/16 tâches | **`tenderai-backend`, branche `staging`** (tâches 10-16 se font ici, plus sur le monorepo) |
+| 3 | Pipeline split (harvest/delivery multi-company) | ✅ **Terminé** (16/16 tâches + revue finale + fix wave) | `tenderai-backend`, branche `staging` (poussé sur GitHub) |
 | 4 | Audit qualité des pipelines | ⬜ Pas commencé | À faire sur `tenderai-backend` |
 
 **Règle appliquée depuis le 2026-08-27 :** tout travail postérieur au chantier 1 (repo-split) se fait sur les nouveaux repos, jamais sur le monorepo. Le monorepo `Tender-AI` (ce dépôt) n'accueille plus aucun développement backend/pipeline actif — il ne reçoit que la maintenance, les docs, et reste le dépôt de production jusqu'au cutover (tâches 12-14 du chantier 1).
@@ -68,14 +68,15 @@ tenderai-frontend, tenderai-infra : état de l'extraction du 24/08,
 - Sous-projet B — nettoyage ruff/lint : plan `docs/superpowers/plans/2026-08-25-ruff-lint-cleanup.md`. ✅ Terminé (ruff check clean), mergé dans `staging`.
 - Les deux sont entrés dans `staging` via le commit `7235ac6` (merge du worktree vers `staging`, 2026-08-26).
 
-### Chantier 3 — Pipeline split (harvest/delivery, support multi-company)
-- Spec : `docs/superpowers/specs/2026-08-26-multi-company-pipeline-split-design.md` (existe sur le monorepo, à recopier dans `tenderai-backend` si besoin de référence).
-- Plan : `docs/superpowers/plans/2026-08-27-multi-company-pipeline-split.md` (16 tâches), committé sur le monorepo (`5478d04`).
-- But : scinder `agents/graph.py` en un graphe "harvest" (collecte + persistance, sans email) et un nouveau `delivery_graph.py` (classification + email), pour permettre plusieurs runs de livraison par entreprise cliente.
-- Avancement : tâches 1 à 9 terminées (validation : 143 tests passants). La tâche 9 (`TenderAIGraph` devient harvest-only) avait été committée sur le monorepo (`48b0f9d`) mais pas encore journalisée/reviewée quand une coupure de courant a interrompu la session précédente.
-- **Bascule (2026-08-27) :** le travail des tâches 1-9 a été synchronisé depuis le monorepo (worktree `.claude/worktrees/repo-split`) vers `tenderai-backend/staging` (commit `ae9086b`), avec le chantier 2 en même temps (rattrapage, voir ci-dessus). Suite à la règle "tout travail post-chantier-1 se fait sur les nouveaux repos", **les tâches 10 à 16 se poursuivent directement sur `tenderai-backend`, plus sur le monorepo.**
-- Le journal d'exécution SDD (`.superpowers/sdd/2026-08-27-multi-company-pipeline-split/progress.md`, non versionné, scratch local) reste dans le worktree du monorepo pour les tâches 1-8 déjà journalisées — la tâche 9 et suivantes seront journalisées dans un nouveau workspace SDD ouvert sur `tenderai-backend`.
-- Reste à faire : tâche 9 (review formelle) à 16 (vérification finale), sur `tenderai-backend/staging`.
+### Chantier 3 — Pipeline split (harvest/delivery, support multi-company) — ✅ TERMINÉ
+- Spec : `docs/superpowers/specs/2026-08-26-multi-company-pipeline-split-design.md`, plan : `docs/superpowers/plans/2026-08-27-multi-company-pipeline-split.md` (16 tâches) — les deux copiés sur `tenderai-backend` pour référence.
+- But : scinder `agents/graph.py` en un graphe "harvest" (collecte + persistance, sans email) et un nouveau `delivery_graph.py` (classification + email), pour permettre plusieurs runs de livraison par entreprise cliente. **Atteint.**
+- Tâches 1-9 : implémentées initialement sur le monorepo (worktree `.claude/worktrees/repo-split`), synchronisées vers `tenderai-backend/staging` le 2026-08-27 (commit `ae9086b`, avec le chantier 2 en même temps). Suite à la règle "tout travail post-chantier-1 se fait sur les nouveaux repos", **plus aucun travail n'a été fait sur le monorepo à partir de ce point.**
+- Tâches 10-16 : implémentées, reviewées et corrigées directement sur `tenderai-backend/staging` (2026-08-27/28), commits `9d1a97a`..`ece90ec`.
+- **Revue finale globale** (modèle le plus capable, périmètre tâches 10-16) : architecture saine, chaîne de données bout-en-bout cohérente, mais a trouvé **1 finding Critical réel** — le curseur de livraison (présence d'une ligne `CompanyNoticeStatus`) avançait à la classification, avant que la livraison (résumé/rapport/email) n'aboutisse réellement ; en cas d'échec en cours de route (MinIO, SMTP, destinataires manquants), les avis concernés n'étaient plus jamais proposés à la livraison, silencieusement — une régression par rapport au pipeline pré-scission qui était auto-réparateur. Plus 5 findings Important (destinataires créés via l'API perdant leur `company_id`, rapports livrés affichant "0 sources" et stats vides, stat `notices_persisted` jamais enregistrée, `Makefile` cassé par le changement CLI, absence de test bout-en-bout du graphe de livraison).
+- **1 vague de correction** appliquée pour les 6 findings (commit `c6ff48b`), incluant un nouveau test d'intégration bout-en-bout (`tests/test_delivery_graph.py::test_delivery_graph_runs_end_to_end`) qui exécute le vrai graphe contre une DB SQLite en mémoire. Re-review scopée : les 6 findings vérifiés ADDRESSED, aucune nouvelle régression. Un correctif de documentation trivial (commit `ece90ec`) a suivi.
+- État final : `ece90ec` sur `tenderai-backend/staging`, poussé sur GitHub. 158 tests passants, `ruff check`/`ruff format` propres (seules les 3 violations pré-existantes hors périmètre subsistent).
+- **Dette documentée, non bloquante, laissée pour plus tard :** 8 findings Minor de la revue finale (requête `NOT IN` au lieu de `NOT EXISTS`, pas de fenêtre de date sur le premier run de livraison, cron de livraison par défaut identique au cron de harvest, etc. — détail complet dans le journal SDD de la session, maintenant supprimé, et dans le message du commit `c6ff48b`) ; le bug pré-existant de préfixe de variable d'env dans `tests/conftest.py` (`TENDERAI_DATABASE_URL` vs `DATABASE_URL`) ; deux stopgaps documentés et intentionnels (YULCOM en dur dans les endpoints API manuels et la création de destinataires, en attendant un futur plan Auth/API ; performance de la requête anti-jointure de `select_new_notices` jamais testée à l'échelle réelle).
 
 ### Chantier 4 — Audit qualité des pipelines
 - Pas commencé. Aucun spec/plan écrit à ce jour.
@@ -91,11 +92,11 @@ Chaque repo du projet — ce monorepo **et** chacun des 3 repos produits par le 
 Décision initiale : finir le chantier 3 sur le monorepo puis re-sync `tenderai-backend` à la fin. **Révisée dans la foulée** : le principe correct est que tout travail postérieur au chantier 1 doit se faire sur les nouveaux repos dès que possible, pas seulement une fois un chantier entier terminé. Appliqué :
 
 1. ✅ **Sync immédiat** de `tenderai-backend` avec l'état courant du monorepo (chantier 2 complet + chantier 3 tâches 1-9), plutôt que d'attendre la fin du chantier 3. Commit `ae9086b`, 143 tests passants, poussé sur `origin/staging`.
-2. ✅ **Plus aucun travail backend/pipeline sur le monorepo à partir de maintenant.** Chantier 3 (tâches 10-16) et chantier 4 (pas commencé) se font sur `tenderai-backend/staging`.
-3. **Ensuite**, une fois le chantier 3 terminé sur `tenderai-backend` : cutover du serveur staging (tâche 12 du chantier 1) vers les 3 nouveaux repos.
+2. ✅ **Plus aucun travail backend/pipeline sur le monorepo à partir de maintenant.** Chantier 3 (tâches 10-16, ✅ terminé) et chantier 4 (pas commencé) se font sur `tenderai-backend/staging`.
+3. **Ensuite**, une fois le chantier 3 terminé sur `tenderai-backend` (✅ fait) : cutover du serveur staging (tâche 12 du chantier 1) vers les 3 nouveaux repos.
 
 ## Actions immédiates suggérées
 
-1. Reprendre le chantier 3 à partir de la tâche 9 (review formelle) sur `tenderai-backend/staging`, continuer jusqu'à la tâche 16.
+1. **Cutover staging (tâche 12 du chantier 1)** — le chantier 3 étant terminé sur `tenderai-backend`, c'est maintenant la prochaine étape logique vers le basculement du serveur de staging (pas la prod) vers les 3 nouveaux repos. Nécessite un accès SSH au serveur staging que l'agent n'a pas localement — voir le détail de la tâche 12 dans `docs/superpowers/plans/2026-08-24-repo-split.md`.
 2. Réconcilier `main` et `staging` sur ce monorepo (doublon de commits docs du chantier 1) — nettoyage différé, non bloquant.
-3. Cutover staging (tâche 12 du chantier 1) — une fois le chantier 3 terminé sur `tenderai-backend`.
+3. Chantier 4 (audit qualité des pipelines) — pas commencé, à démarrer sur `tenderai-backend` quand souhaité.
