@@ -1099,7 +1099,8 @@ EOF
 
 **Interfaces:**
 - Consumes: `CompanyScopedUser`, `company_id` JWT claim from Task 2; `Company` model.
-- Produces: `resolve_delivery_company_id(user: dict | None, requested_company_id: int | None, db: Session) -> int | None` in `dependencies.py` — the shared resolution rule both manual-trigger endpoints use (see Step 4 below). No other new public interface — this task otherwise only changes filtering/authorization behavior on endpoints Tasks 1-3 don't touch.
+- Produces: `resolve_delivery_company_id(user: dict | None, requested_company_id: int | None, db: Session) -> int | None` in `dependencies.py` — the shared resolution rule used by both manual-trigger endpoints (Step 4) and `create_recipient` (Step 3). No other new public interface — this task otherwise only changes filtering/authorization behavior on endpoints Tasks 1-3 don't touch.
+- **Pre-existing tests this task must not break**: `tests/api/test_recipients_endpoints.py::test_create_recipient_defaults_to_yulcom_company` and `tests/api/test_countries_run_trigger.py::test_trigger_run_calls_both_harvest_and_delivery` both currently pass by depending on the YULCOM stopgap this task removes — run them before and after each relevant step (see Step 3's note), not just at the final Step 9 full-suite run.
 
 **Important — this task closes a real regression the original stopgap comments warn against, not just removes them.** The stopgap text in `countries.py`/`runs.py` reads *"Stopgap until the Auth/API plan adds company selection to this endpoint: deliver to YULCOM... so this manual trigger keeps sending email as it did before the pipeline split."* A naive fix that simply replaces the hardcoded YULCOM lookup with `current_user["company_id"]` would break exactly what that comment warns about: the live admin account is `super_admin`, whose `company_id` is always `None` — so the "Lancer maintenant" button (which calls `countries.py`'s `trigger_run`) would silently stop delivering email the moment this ships, with only a log line to notice. Step 4 below adds the actual company-selection capability the comment calls for, with a YULCOM fallback for `super_admin` when no explicit selection is made — preserving today's default button behavior until Section 4 (frontend) adds a real picker.
 
@@ -1347,6 +1348,8 @@ Expected: FAIL on all five — recipients still hardcode YULCOM (first test's `c
 
 - [ ] **Step 3: Fix `recipients.py`**
 
+**First, verify a pre-existing test this step must not break**: run `poetry run pytest tests/api/test_recipients_endpoints.py -v --no-cov` before touching this file. `test_create_recipient_defaults_to_yulcom_company` creates a recipient as a `super_admin` caller (`admin_token` fixture) and asserts `row.company_id == yulcom.id` — i.e. today's YULCOM stopgap is depended on by an existing, currently-passing test, not just the two manual-trigger endpoints Step 4 already handles. A naive `company_id=user.get("company_id")` substitution here would give `None` for that same `super_admin` caller and break this test, for the identical reason Step 4 fixes `runs.py`/`countries.py`. Use `resolve_delivery_company_id` (from `dependencies.py`, already added earlier in this task) here too — it already encodes exactly this fallback rule (own company for `company_admin`/`company_viewer`, YULCOM fallback for `super_admin` with no override) even though this endpoint has no `requested_company_id` override to pass, so call it as `resolve_delivery_company_id(user, None, db)`.
+
 Replace the YULCOM stopgap in `create_recipient` and add company-scoping to `list_recipients`:
 
 ```python
@@ -1390,6 +1393,8 @@ async def create_recipient(
             detail=f"Recipient with email '{request.email}' already exists for this country",
         )
 
+    from ..dependencies import resolve_delivery_company_id
+
     row = Recipient(
         email=request.email,
         name=request.name,
@@ -1397,7 +1402,7 @@ async def create_recipient(
         enabled=request.enabled,
         preferences=request.preferences,
         country_id=request.country_id,
-        company_id=user.get("company_id"),
+        company_id=resolve_delivery_company_id(user, None, db),
     )
     db.add(row)
     db.commit()
@@ -1412,9 +1417,7 @@ async def create_recipient(
     return RecipientSchema.from_orm(row)
 ```
 
-Remove the now-unused `from ...models import Company` import if `Company` isn't referenced anywhere else in this file after the edit (check with `grep -n "Company" src/tenderai_bf/api/routers/recipients.py`).
-
-Note: `super_admin` (whose own `company_id` is `None`) creating a recipient via this endpoint will get `company_id=None` on the new row — same as today's behavior gap for country-less super_admin actions elsewhere in this codebase (e.g. `sources.py` has no company concept at all). This is acceptable for this task: super_admin-created recipients being company-less mirrors how `runs.py`'s existing `RunTriggerRequest.country_id` already defaults rather than requiring an explicit company selector, and adding a "super_admin picks a target company" UI concept is Section 4 (frontend) scope, not this plan's.
+Remove the now-unused `from ...models import Company` import if `Company` isn't referenced anywhere else in this file after the edit (check with `grep -n "Company" src/tenderai_bf/api/routers/recipients.py`) — `resolve_delivery_company_id` does its own `Company` import internally, this file doesn't need its own anymore.
 
 - [ ] **Step 4: Add `resolve_delivery_company_id`, then fix `runs.py` and `countries.py`'s YULCOM stopgaps**
 
@@ -1962,5 +1965,7 @@ EOF
 **Explicitly not covered by this plan** (confirmed out of scope): Section 4 (frontend — `CompanyContext`, `/companies` page, sidebar nav, proxy route) is a separate future plan. `sources.py`'s spec-mentioned "scoped to their subscribed countries" (beyond plain read-only) is not implemented — the spec says company_admin/viewer get read-only sources, but doesn't specify filtering the *list* by their company's subscriptions the way `recipients`/`runs` are filtered; Task 4 Step 6 implements the read-only part only. If country-subscription-filtered source lists turn out to be required, that's a gap to raise with the user before or during execution, not something to silently add or silently skip.
 
 **Revision (2026-08-29, coordinator review before user hand-off):** Task 4's original draft removed the three YULCOM stopgaps by simply substituting `current_user["company_id"]` for the hardcoded lookup — but the live admin account is `super_admin`, whose `company_id` is always `None`, so that substitution would have silently broken the "Lancer maintenant" button's email delivery, which is exactly the regression the original stopgap comments ("Stopgap until the Auth/API plan adds company selection...") were written to avoid. Fixed by adding a `resolve_delivery_company_id` helper and an explicit `company_id` param to both manual-trigger endpoints, with a YULCOM fallback for `super_admin` when no company is specified — this actually delivers the "company selection" capability the stopgap comments called for, not just a stopgap removal. Confirmed with the user before finalizing (chose "add explicit company selection" over "accept the regression").
+
+**Second revision (2026-08-29, same review pass, caught by running the baseline test suite before dispatching Task 1):** the identical regression pattern was found in `recipients.py`'s `create_recipient` — a pre-existing, currently-passing test (`test_recipients_endpoints.py::test_create_recipient_defaults_to_yulcom_company`) creates a recipient as `super_admin` and asserts it lands on YULCOM. This test wasn't in the original Task 4 file list and the original `create_recipient` fix (`company_id=user.get("company_id")`) would have broken it the same way. Fixed by routing `create_recipient` through the same `resolve_delivery_company_id` helper (Task 4 Step 3). Also confirmed `test_countries_run_trigger.py`'s existing test continues to pass unmodified under the `countries.py` fix — its `get_db_context` mock becomes vestigial (the new code resolves the target company synchronously against the request-scoped session instead) but harmless.
 
 **Open question for the user, not resolved by the spec or codebase exploration:** `ClassificationSettingsSchema` (used by both `countries.py` and this plan's new `companies.py` settings endpoint) only declares `relevant_keywords` — it does not declare `min_relevance_score`, even though migration `0013`'s seed step explicitly merges `min_relevance_score` into the company-level `classification` section. Whether this silently passes through today (Pydantic's default `extra` behavior needs checking against this specific `BaseModel`'s config) or was already a pre-existing gap in the country-level settings endpoint is not something this plan's exploration resolved, and it's identical pre-existing behavior either way — not a regression this plan introduces. Flag to the user; do not fix speculatively inside this plan.
