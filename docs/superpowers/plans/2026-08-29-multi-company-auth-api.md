@@ -1579,7 +1579,7 @@ async def trigger_run(
     return {"status": "accepted", "country_id": country_id, "company_id": target_company_id}
 ```
 
-Note the role-literal fix folded in here too (`"admin"` → `"company_admin"` in the role check — this line was missed by Task 2 Step 5's literal cleanup since that step didn't list this exact line; double-check no other stray `"admin"` literal remains in this file with `grep -n '"admin"' src/tenderai_bf/api/routers/countries.py` before moving on).
+Note: Task 2 Step 5 already fixed this same role-literal (`"admin"` → `"company_admin"`) at this line as part of its cleanup pass — this Step 4 rewrite naturally carries that fix forward since it replaces the whole function body. No separate action needed here beyond what's shown above; just confirm no stray `"admin"` literal remains anywhere else in this file with `grep -n '"admin"' src/tenderai_bf/api/routers/countries.py` before moving on.
 
 - [ ] **Step 5: Scope `reports.py` and `runs.py`'s list/status endpoints**
 
