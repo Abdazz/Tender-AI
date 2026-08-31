@@ -136,6 +136,13 @@ Spec : `docs/superpowers/specs/2026-08-28-tenderai-bf-rename-infra-design.md`. P
 ### Chantier 4 — Audit qualité des pipelines
 - Pas commencé. Aucun spec/plan écrit à ce jour.
 
+### Tâche autonome (à planifier) — Spike Scrapling
+- **Proposée par l'utilisateur le 2026-08-31, à traiter comme tâche autonome et indépendante** (pas rattachée au chantier 4, même si thématiquement proche de l'audit qualité des pipelines).
+- `Scrapling` (https://github.com/d4vinci/Scrapling, BSD-3-Clause, ~78k stars, actif) — framework de scraping Python : sélecteurs adaptatifs/auto-réparants (relocalisation par similarité, sans LLM), `StealthyFetcher` (impersonation d'empreinte TLS, contournement Cloudflare Turnstile), `DynamicFetcher` (Playwright), export `.markdown()` pour extraction LLM/RAG.
+- Pertinence pour `tenderai-backend` : la stack actuelle est `httpx` + `selectolax`/`beautifulsoup4` + `playwright` (extra optionnel, UA en dur, aucun stealth) + `crawl4ai` (extra "full") + ~13 nœuds `fetch_*.py` sur mesure par portail. Scrapling adresse trois points : (1) parsers sur mesure qui cassent aux redesigns HTML → sélecteurs auto-réparants, (2) Playwright nu trivialement détectable, portails type UNGM/gouv derrière Cloudflare → `StealthyFetcher`, (3) deux dépendances lourdes qui se recouvrent (playwright + crawl4ai) → une seule API.
+- Périmètre du spike (~½ journée) : évaluer `StealthyFetcher` contre les 2-3 portails les plus problématiques ; évaluer `Adaptor` + `.markdown()` en remplacement de `selectolax`/`bs4` + `crawl4ai` sur 1-2 sources (mesurer la réduction de coût LLM) ; mesurer le delta de taille d'image Docker et de temps CI. Puis décider d'une adoption incrémentale par source (`fetcher_type: "stealthy"` / `parser_type: "scrapling"`), jamais un big-bang.
+- Réserves : coût de migration non trivial (~13 nœuds), dépendances natives (`curl_cffi` + libs système navigateur), API à évolution rapide (pin exact obligatoire), posture ToS/éthique à décider explicitement pour du contournement anti-bot sur des portails de marchés publics gouvernementaux.
+
 ## Règle de workflow git (obligatoire, tous repos)
 
 Chaque repo du projet — ce monorepo **et** chacun des 3 repos produits par le chantier 1 (`tenderai-backend`, `tenderai-frontend`, `tenderai-infra`) — doit avoir une branche `staging`. Tout travail est d'abord fusionné sur `staging` (déployée, testée en conditions réelles), puis promu vers `main` seulement après validation. Jamais de fusion/push direct sur `main`. Documentée dans `CLAUDE.md`.
@@ -157,3 +164,4 @@ Décision initiale : finir le chantier 3 sur le monorepo puis re-sync `tenderai-
 3. Réconcilier `main` et `staging` sur ce monorepo (doublon de commits docs du chantier 1) — nettoyage différé, non bloquant.
 4. Chantier 4 (audit qualité des pipelines) — pas commencé, à démarrer sur `tenderai-backend` quand souhaité.
 5. Tâches 13 (cutover prod) et 14 (archivage monorepo) restent bloquées en attente de confirmation explicite de l'utilisateur.
+6. **Spike Scrapling** (tâche autonome, voir sous-section dédiée sous le chantier 4) — à planifier quand souhaité.
