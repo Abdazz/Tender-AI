@@ -183,11 +183,27 @@ Aucun cas de faux positif de classification à documenter pour cette source : pu
 
 **Particularité structurelle de cette source :** `fetch_listings.py` contient une branche spéciale (`if parser_type == "html-listing" and "joffres" in source_name.lower()`) qui, après avoir récupéré la page de listing HTML, appelle immédiatement `extract_joffres_listings()` (`fetch_joffres.py`) pour en extraire les liens des avis (sélecteur CSS `a.job-title`) — contrairement aux autres sources `html-listing` génériques, l'extraction des liens se fait donc dès l'étage `fetch_listings`, pas à l'étage `extract_item_links`. Le code (`fetch_all_listings`) porte aussi un commentaire explicite notant que joffres.net « drops connections on non-browser User-Agents », d'où un `User-Agent` de navigateur réel forcé pour tout le client HTTP du run — vérifié ci-dessous pour signe de blocage/troncature.
 
-**Vérité terrain, collectée le 2026-09-01 (deux méthodes indépendantes, à ~40 min d'intervalle, résultat identique) :**
+**Vérité terrain, collectée le 2026-09-01 (deux méthodes indépendantes, à quelques minutes d'intervalle, résultat identique) :**
 - **Requête `curl`** (User-Agent navigateur, identique à celui utilisé par le pipeline) contre l'URL exacte configurée (`list_url` en DB, `source_id=9`, copiée verbatim) — `https://joffres.net/recherche?domaine=Informatique+%26+D%C3%A9veloppement&localisation=&societe=&secteur=&prevision=0%2F1000000000&date_publication=&date_expiration=&statut=` — à **2026-09-01 22:03:33 UTC** (horodatage du header `Date` de la réponse) : `HTTP 200`, 133 498 octets.
 - **Navigateur Chrome** (session interactive), même URL, quelques minutes plus tard : `HTTP 200`, page identique.
 
-Comptage indépendant, deux méthodes sur le HTML téléchargé par `curl` (fichier sauvegardé localement, recompté directement dessus, pas à l'estimation) : `grep -c 'job-title'` (le sélecteur CSS utilisé par le pipeline) → **1** ; `grep -c 'offre-localisation'` (marqueur d'un bloc résultat distinct) → **1** ; aucun lien `href="...appeloffre..."` distinct autre que celui-ci ; aucune marque de pagination (`page=`, « Suivant ») dans le HTML. Confirmé aussi par lecture du texte rendu de la page (« Resultat pour : Domaine: Informatique & Développement | » suivi d'un seul bloc résultat). **La vérité terrain pour ce `list_url` exact est donc 1 avis, pas plus** :
+Comptage indépendant, deux méthodes sur le HTML téléchargé par `curl` (fichier sauvegardé localement, recompté directement dessus, pas à l'estimation) : `grep -c 'job-title'` (le sélecteur CSS utilisé par le pipeline) → **1** ; `grep -c 'offre-localisation'` (marqueur d'un bloc résultat distinct) → **1** ; aucun lien `href="...appeloffre..."` distinct autre que celui-ci ; aucune marque de pagination (`page=`, « Suivant ») dans le HTML. Confirmé aussi par lecture du texte rendu de la page (« Resultat pour : Domaine: Informatique & Développement | » suivi d'un seul bloc résultat). Commandes et sortie brute (fichier `joffres_ground_truth.html` toujours présent dans le scratchpad, re-exécuté verbatim pour cette révision) :
+
+```
+$ grep -c 'job-title' joffres_ground_truth.html
+1
+
+$ grep -c 'offre-localisation' joffres_ground_truth.html
+1
+
+$ grep -o 'href="[^"]*appeloffre[^"]*"' joffres_ground_truth.html | sort -u
+href="https://joffres.net/appeloffre/appel-d-offres-pour-l-aquisition-et-installations-d-equipements-informatiques"
+
+$ grep -io 'page=[0-9]*\|suivant' joffres_ground_truth.html | sort -u
+(aucune sortie — aucune marque de pagination)
+```
+
+**La vérité terrain pour ce `list_url` exact est donc 1 avis, pas plus** :
 
 1. « APPEL D'OFFRES POUR L'AQUISITION ET INSTALLATIONS D'EQUIPEMENTS INFORMATIQUES » — PNUD/UNDP-BFA (Burkina Faso), Procurement Process: RFQ, Reference Number `UNDP-BFA-00734`, publié le 20-Aug-26, deadline 02-Sep-26 @ 13h30 (New York time) / « Expire le 02-09-2026 », localisation Ouagadougou, domaine « Informatique & Développement » — **manifestement pertinent** pour une entreprise IT (acquisition et installation d'équipements informatiques).
 
@@ -202,15 +218,27 @@ Remarque : joffres.net agrège ici une annonce dont l'entité est le PNUD (UNDP-
 - `deduplicate.json` (24 items uniques au total) : l'item est présent, `is_duplicate: false` — 1/1, non fusionné à tort avec un autre avis.
 - `notices` (DB, `source_id=9`) : **0 ligne** (requête Step 3 exécutée le 2026-09-01, `SELECT ... FROM notices n LEFT JOIN company_notice_status cns ... WHERE n.source_id=9` → 0 rows). **Résultat attendu et non spécifique à Joffres.net** : comme documenté au Finding #1 en tête de section BF, ce run a crashé à `persist_notices` sur un `DatetimeFieldOverflow` provenant d'une notice **UNGM** (`LRFP-2026-9205898`), dans une transaction unique tout-ou-rien qui a englouti avec elle les 8 items UEMOA et le seul item Joffres.net du batch de 24. L'item Joffres.net lui-même n'est pas en cause : son `deadline_at` (`02-09-2026`, jour=02) ne peut pas produire un dépassement de champ mois/jour comme celui qui a fait échouer l'INSERT.
 
+  Requête et sortie brute (ré-exécutée verbatim sur staging pour cette révision) :
+
+  ```
+  $ ssh -i ~/.ssh/id_ed25519 tender-ai@195.35.48.198 \
+    "docker exec staging_postgres psql -U tenderai -d tenderai_bf -c \
+    \"SELECT n.id, n.title, n.ref_no, n.deadline_at, n.is_duplicate, n.duplicate_of_id, cns.is_relevant, cns.relevance_score, cns.classification_method FROM notices n LEFT JOIN company_notice_status cns ON cns.notice_id=n.id AND cns.company_id=1 WHERE n.source_id=9 ORDER BY n.created_at DESC LIMIT 50;\""
+
+   id | title | ref_no | deadline_at | is_duplicate | duplicate_of_id | is_relevant | relevance_score | classification_method
+  ----+-------+--------+-------------+--------------+-----------------+-------------+-----------------+------------------------
+  (0 rows)
+  ```
+
 **Gaps constatés :**
 
 | Titre | Vu par le pipeline ? | Étage où perdu/faux positif | Cause racine | Étiquette (bug/archi/techno) | Sévérité | Preuve |
 |---|---|---|---|---|---|---|
-| APPEL D'OFFRES POUR L'AQUISITION ET INSTALLATIONS D'EQUIPEMENTS INFORMATIQUES (PNUD/UNDP-BFA-00734) — manifestement pertinent pour une entreprise IT | Oui, jusqu'à `deduplicate` inclus (item unique, non dupliqué) | Persist (`persist_notices`) | Non spécifique à Joffres.net : transaction unique tout-ou-rien du run BF entier, qui échoue sur un `DatetimeFieldOverflow` provenant d'une notice **UNGM** distincte (`LRFP-2026-9205898`, deadline `29-09-2026`) — voir Finding #1. L'avis Joffres.net lui-même est structurellement correct (fetch, parse, dedup tous réussis) et n'a aucune part dans la cause du crash. | limite architecturale | Critique | `fetch_listings.json`/`extract_item_links.json`/`fetch_items.json`/`parse_extract.json`/`deduplicate.json` (item présent et intact à chaque étage, `is_duplicate: false`) ; requête SQL Step 3 (`source_id=9`) → 0 lignes ; Finding #1 (analyse de code `persist_notices.py` + preuve empirique du batch INSERT de 24 lignes) |
+| APPEL D'OFFRES POUR L'AQUISITION ET INSTALLATIONS D'EQUIPEMENTS INFORMATIQUES (PNUD/UNDP-BFA-00734) — manifestement pertinent pour une entreprise IT | Oui, jusqu'à `deduplicate` inclus (item unique, non dupliqué) | Persist (`persist_notices`) | Non spécifique à Joffres.net : transaction unique tout-ou-rien du run BF entier, qui échoue sur un `DatetimeFieldOverflow` provenant d'une notice **UNGM** distincte (`LRFP-2026-9205898`, deadline `29-09-2026`) — voir Finding #1. L'avis Joffres.net lui-même est structurellement correct (fetch, parse, dedup tous réussis) et n'a aucune part dans la cause du crash. | bug logique | Critique | `fetch_listings.json`/`extract_item_links.json`/`fetch_items.json`/`parse_extract.json`/`deduplicate.json` (item présent et intact à chaque étage, `is_duplicate: false`) ; requête SQL Step 3 (`source_id=9`) → 0 lignes ; Finding #1 (analyse de code `persist_notices.py` + preuve empirique du batch INSERT de 24 lignes) |
 
 Aucun autre gap à documenter pour cette source sur ce run : la vérité terrain ne compte qu'un seul avis pour ce `list_url` exact, et le pipeline l'a intégralement vu, correctement extrait (à l'exception mineure du champ `ref_no`, non extrait faute de motif regex adapté au format PNUD, mais sans conséquence sur l'identification de l'avis) et correctement dédoublonné. Aucun cas de faux positif de classification à documenter : la livraison ne s'étant pas déclenchée (harvest en échec), aucune ligne `company_notice_status` n'existe pour vérifier une éventuelle sur-classification.
 
-**Verdict :** Joffres.net n'a, à ce jour et pour cette configuration de filtre (`domaine=Informatique & Développement`), qu'un seul avis actif — et le pipeline l'a intégralement et correctement traité de bout en bout jusqu'à `deduplicate` : la branche de code spéciale `html-listing`/joffres (sélecteur CSS `a.job-title`) fonctionne, aucun signe de blocage anti-bot ou de troncature n'a été observé sur ce run malgré la fragilité connue et documentée de ce site (3 échecs `502`/timeout sur la fenêtre historique de 20 jours couverte au Finding #3). Le seul écart entre vérité terrain (1) et base de données (0) n'est pas imputable au code spécifique à Joffres.net : c'est une conséquence collatérale du bug transversal déjà identifié au Finding #1 (transaction `persist_notices` unique et tout-ou-rien pour tout le run BF, cassée par une notice UNGM). Étiquette retenue **limite architecturale** (absence d'isolation par item/source dans `persist_notices`, pas un défaut du code Joffres.net) plutôt que bug logique ou limite technologique. Point mineur relevé en passant, sans impact sur la détection de l'avis : le champ `ref_no` reste vide pour les annonces d'origine PNUD/UNDP hébergées sur joffres.net, faute de motif regex couvrant leur format de référence (« Reference Number : XXX » sans « N° ») dans `extract_joffres_detail()`.
+**Verdict :** Joffres.net n'a, à ce jour et pour cette configuration de filtre (`domaine=Informatique & Développement`), qu'un seul avis actif — et le pipeline l'a intégralement et correctement traité de bout en bout jusqu'à `deduplicate` : la branche de code spéciale `html-listing`/joffres (sélecteur CSS `a.job-title`) fonctionne, aucun signe de blocage anti-bot ou de troncature n'a été observé sur ce run malgré la fragilité connue et documentée de ce site (3 échecs `502`/timeout sur la fenêtre historique de 20 jours couverte au Finding #3). Le seul écart entre vérité terrain (1) et base de données (0) n'est pas imputable au code spécifique à Joffres.net : c'est une conséquence collatérale du bug transversal déjà identifié au Finding #1 (transaction `persist_notices` unique et tout-ou-rien pour tout le run BF, cassée par une notice UNGM). Étiquette retenue **bug logique** (absence d'isolation par item/source dans `persist_notices` : un `db.commit()` unique après toute la boucle, sans try/except ni savepoint par item — corrigible par un changement de code localisé à `persist_notices.py`, sans refonte architecturale, donc « corrigible indépendamment de la techno » au sens de la taxonomie de l'audit) plutôt que limite architecturale ou limite technologique. Point mineur relevé en passant, sans impact sur la détection de l'avis : le champ `ref_no` reste vide pour les annonces d'origine PNUD/UNDP hébergées sur joffres.net, faute de motif regex couvrant leur format de référence (« Reference Number : XXX » sans « N° ») dans `extract_joffres_detail()`.
 
 ### UNGM (source id 10, parser_type ungm)
 _(rempli par sa propre tâche — Task 4)_
