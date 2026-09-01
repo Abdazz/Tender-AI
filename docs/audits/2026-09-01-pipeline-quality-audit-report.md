@@ -241,7 +241,149 @@ Aucun autre gap à documenter pour cette source sur ce run : la vérité terrain
 **Verdict :** Joffres.net n'a, à ce jour et pour cette configuration de filtre (`domaine=Informatique & Développement`), qu'un seul avis actif — et le pipeline l'a intégralement et correctement traité de bout en bout jusqu'à `deduplicate` : la branche de code spéciale `html-listing`/joffres (sélecteur CSS `a.job-title`) fonctionne, aucun signe de blocage anti-bot ou de troncature n'a été observé sur ce run malgré la fragilité connue et documentée de ce site (3 échecs `502`/timeout sur la fenêtre historique de 20 jours couverte au Finding #3). Le seul écart entre vérité terrain (1) et base de données (0) n'est pas imputable au code spécifique à Joffres.net : c'est une conséquence collatérale du bug transversal déjà identifié au Finding #1 (transaction `persist_notices` unique et tout-ou-rien pour tout le run BF, cassée par une notice UNGM). Étiquette retenue **bug logique** (absence d'isolation par item/source dans `persist_notices` : un `db.commit()` unique après toute la boucle, sans try/except ni savepoint par item — corrigible par un changement de code localisé à `persist_notices.py`, sans refonte architecturale, donc « corrigible indépendamment de la techno » au sens de la taxonomie de l'audit) plutôt que limite architecturale ou limite technologique. Point mineur relevé en passant, sans impact sur la détection de l'avis : le champ `ref_no` reste vide pour les annonces d'origine PNUD/UNDP hébergées sur joffres.net, faute de motif regex couvrant leur format de référence (« Reference Number : XXX » sans « N° ») dans `extract_joffres_detail()`.
 
 ### UNGM (source id 10, parser_type ungm)
-_(rempli par sa propre tâche — Task 4)_
+
+**Particularité structurelle de cette source :** UNGM agrège des avis de 40+ agences ONU (UNDP, UNICEF, WHO, WFP, etc.). `fetch_ungm.py` n'utilise ni Playwright ni scraping de la page publique interactive : il POST directement au endpoint legacy `https://www.ungm.org/Public/Notice/Search` (celui qu'utilise en interne le widget "picker" du site) avec un payload JSON filtrant sur `Countries: [2324]` (Burkina Faso, valeur par défaut codée en dur — `COUNTRY_BURKINA_FASO = 2324`) et parse le fragment HTML retourné (lignes `div.tableRow.dataRow`). Ce endpoint est différent de celui qu'utilise la page moderne `/Public/Notice` (SPA) : il ne renvoie ni total ni indicateur de dernière page, et — comme démontré empiriquement ci-dessous — **plafonne à 15 lignes par page quel que soit le `PageSize` demandé**, nécessitant une boucle sur `PageIndex` pour tout récupérer. Cette boucle est absente du code actuel : `PageIndex` est câblé en dur à `0` dans `fetch_ungm_listings()` (`fetch_ungm.py` ligne 28).
+
+**Vérité terrain — méthode et filtre appliqué :** UNGM étant un site global, le filtre géographique appliqué est celui du champ "Beneficiary country or territory" de la page officielle `https://www.ungm.org/Public/Notice`, réglé sur "Burkina Faso" (sélectionné via l'autocomplete du site — seul filtre pays disponible), avec "Only currently active" coché (comportement par défaut) — reproduisant l'intention du filtre `Countries: [2324]` codé en dur côté pipeline. Capturé le 2026-09-01, résultat affiché par le site lui-même (stable entre deux captures, à 15 puis 45 résultats chargés par défilement) :
+```
+Displaying results 1 to 15 of 54
+...
+Displaying results 1 to 45 of 54
+```
+
+**Reproduction indépendante de la requête exacte du pipeline (`curl`, même endpoint, même payload JSON, même User-Agent) :**
+```
+$ curl -s -o ungm_resp.html -w "HTTP_STATUS:%{http_code} SIZE:%{size_download}\n" \
+  -X POST "https://www.ungm.org/Public/Notice/Search" \
+  -H "Accept: text/html, */*; q=0.01" -H "Content-Type: application/json" \
+  -H "User-Agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36" \
+  -H "X-Requested-With: XMLHttpRequest" -H "Referer: https://www.ungm.org/Public/Notice" \
+  --data '{"PageIndex":0,"PageSize":50,"Title":"","Description":"","Reference":"","PublishedFrom":"","PublishedTo":"","DeadlineFrom":"","DeadlineTo":"","Countries":[2324],"Agencies":[],"UNSPSCs":[],"NoticeTypes":[],"SortField":"DatePublished","SortAscending":false,"isPicker":false,"NoticeTypeIds":[],"NoticeStatuses":[]}'
+HTTP_STATUS:200 SIZE:95088
+
+$ grep -c 'tableRow dataRow' ungm_resp.html
+15
+$ grep -o 'data-noticeid="[0-9]*"' ungm_resp.html | sort -u | wc -l
+15
+$ grep -io "captcha\|access denied\|blocked\|cloudflare\|are you human\|rate limit" ungm_resp.html | sort -u
+(aucune sortie — aucun signe de blocage/CAPTCHA)
+```
+→ **15 lignes, les mêmes 15 `notice_id` que ceux effectivement récupérés par le pipeline** (`fetch_listings.json`), malgré `PageSize: 50` explicitement demandé. **Aucun signe de blocage anti-bot** dans la réponse brute — HTTP 200 propre, contenu HTML complet et exploitable. Ceci contredit, pour cette source telle qu'implémentée, la mise en garde de `docs/PROJECT_STATUS.md` (spike Scrapling) qui cite UNGM comme cible anti-bot typique : cette mise en garde vise explicitement les fetchs **Playwright nus, sans stealth**, contre des portails « type UNGM/gouv derrière Cloudflare » — or `fetch_ungm.py` n'utilise pas Playwright pour cette source, seulement `httpx` en appel direct à un endpoint API-like, ce qui explique l'absence de blocage observée aujourd'hui. La mise en garde reste valable pour d'autres sources du pipeline utilisant `fetcher_type: playwright` (hors périmètre BF de cette tâche), pas pour UNGM tel qu'implémenté actuellement — donc **pas de limite technologique à documenter ici**, conformément à la consigne du brief.
+
+**Preuve que la pagination existe côté serveur mais n'est jamais exploitée par le pipeline :**
+```
+$ curl ... --data '{"PageIndex":1,"PageSize":50, ... ,"Countries":[2324], ...}' -o ungm_resp_p1.html
+HTTP_STATUS:200 SIZE:95108
+$ grep -c 'tableRow dataRow' ungm_resp_p1.html
+15
+$ comm -12 <(grep -o 'data-noticeid="[0-9]*"' ungm_resp.html | sort -u) <(grep -o 'data-noticeid="[0-9]*"' ungm_resp_p1.html | sort -u)
+(aucune sortie — zéro chevauchement)
+```
+`PageIndex=1` renvoie 15 avis **entièrement distincts** des 15 de `PageIndex=0` (zéro `notice_id` commun) — la pagination fonctionne bel et bien côté UNGM ; c'est le code du pipeline qui ne la sollicite jamais au-delà de la page 0. Au minimum **30 avis actifs distincts** pour ce filtre pays sont ainsi démontrés exister au-delà de ce qu'un seul run du pipeline peut voir aujourd'hui — cohérent avec le total de 54 rapporté par l'UI officielle (retenu comme vérité terrain ; le comptage exact au-delà de la page 1 sur cet endpoint legacy s'est révélé instable d'un appel à l'autre — plusieurs `notice_id` de la page 0 réapparaissent sur des pages ultérieures lors d'appels successifs, signe probable d'un tri par égalité `DatePublished` non stable côté serveur sur ce endpoint — non creusé davantage, hors périmètre).
+
+**Exemple concret d'avis manqué, manifestement pertinent pour une entreprise IT :** notice UNGM 311928, trouvée en page 1 (jamais atteinte par le pipeline), vérifiée en direct sur le site :
+```
+Next Generation Firewall And Secure Web Gateway
+UN Secretariat … Reference: EOIUNPD24643 … Published on: 21-Aug-2026 … Deadline on: 31-Aug-2026 23:59 (GMT -4.00)
+"...Expression of Interest (EOI) ... Next-Generation Firewall (NGFW) and Secure Web Gateway (SWG) solution
+that protect the Organization's global network..."
+```
+Un avis sur la cybersécurité/l'infrastructure réseau — exactement le type d'opportunité IT qu'une entreprise cliente de TenderAI voudrait voir — jamais visible par le pipeline le jour où il était encore actif (deadline 31-Aug, un jour avant le run audité), uniquement parce qu'il se trouvait au-delà de la page 0.
+
+**Confirmation du doublon inter-sources signalé par la Tâche 3 (Joffres.net) :** la vérité terrain UNGM (liste des 54, filtre Burkina Faso, page consultée le 2026-09-01) contient bien :
+```
+Aquisition et installations d équipements informatiques
+02-Sep-2026 13:30 (GMT -4.00) Expires within 24 hours 20-Aug-2026 UNDP Request for quotation UNDP-BFA-00734 Burkina Faso
+```
+— même titre, même référence exacte `UNDP-BFA-00734`, même deadline (`02-09-2026`) que l'avis PNUD/UNDP-BFA repéré côté Joffres.net à la Tâche 3. **Confirmé : c'est bien le même avis, publié à la fois sur Joffres.net et sur UNGM** — la Tâche 3 avait raison de signaler un doublon potentiel inter-source. Cette notice UNGM elle-même est absente des 15 notice_id récupérés par le pipeline aujourd'hui (encore un effet de la limite de pagination ci-dessus). Ni l'une ni l'autre instance (Joffres.net ni UNGM) n'a atteint `persist_notices` sur ce run (Joffres.net : perdu au crash du Finding #1 ; UNGM : jamais fetché, au-delà de la page 0), donc la logique de dédoublonnage inter-source n'a pas pu être testée en conditions réelles — signalé pour la synthèse, non résolu ici comme demandé par le brief.
+
+**Résultat du pipeline (run `785adda4-f28c-4f3c-af0a-74b7e775d0b5`) :**
+
+- `fetch_listings.json` : succès, `status: "success"`, 15 listings (`grep -i "ungm" -A5 fetch_listings.json`, extrait — `"source": "ungm"` répété 15 fois, ex. `"UNICEF China Tender LRFP-2026-9205898 LTA Contract for Vision Aids"`, `"reference": "LRFP-2026-9205898"`, `"deadline": "29-09-2026"`). Tous les 15 `notice_id` identiques à la reproduction curl indépendante ci-dessus. Le champ `"patterns": {}` de la source en DB confirme qu'aucun `ungm_settings` (`country_ids`/`page_size`) personnalisé n'est configuré pour cette source — le code tourne avec ses valeurs par défaut.
+- `parse_extract.json` (27 items au total toutes sources BF confondues) : **15/15** items UNGM survivent intacts, aucune perte à ce stade :
+```
+$ python3 -c "
+import json; from collections import Counter
+d = json.load(open('parse_extract.json'))[0]['data']
+print(Counter(i.get('source') for i in d))"
+Counter({'ungm': 15, "UEMOA - Appels d'offres": 10, 'Enabel - Marchés publics Burkina Faso': 1, 'joffres.net': 1})
+```
+- `deduplicate.json` (24 items uniques au total) : **14/15** UNGM survivent — un item disparaît du tableau `unique_items` sans trace de `duplicate_of_id` :
+```
+$ python3 -c "
+import json; from collections import Counter
+d = json.load(open('deduplicate.json'))[0]['data']
+print(Counter(i.get('source') for i in d))"
+Counter({'ungm': 14, "UEMOA - Appels d'offres": 8, 'Enabel - Marchés publics Burkina Faso': 1, 'joffres.net': 1})
+```
+L'item manquant est `LRFP-2026-9205896` ("UNICEF China Tender LRFP-2026-9205896 LTA Contract for Hearing Aids and Diagnosis Equipment") — absent de la liste des 14 survivants, et absent aussi des `duplicate_of_id` des 14 autres : `log_node_output("deduplicate", unique_items, ...)` (`deduplicate.py` ligne 310) ne logue que les survivants, jamais les items écartés (`similar_items`), donc aucune trace du motif exact n'est conservée dans ce fichier — reconstitué par calcul indépendant :
+```
+$ python3 -c "
+from rapidfuzz import fuzz
+t1 = 'UNICEF China Tender LRFP-2026-9205898 LTA Contract for Vision Aids'
+t2 = 'UNICEF China Tender LRFP-2026-9205896 LTA Contract for Hearing Aids and Diagnosis Equipment'
+print(fuzz.ratio(t1, t2))"
+77.70700636942675
+```
+Config staging (`tenderai-infra/settings.yaml` lignes 559-560) : `deduplication_threshold: 0.75`, `deduplication_method: "hash_similarity"`. Les deux titres suivent un gabarit quasi identique ("UNICEF China Tender LRFP-2026-920589X LTA Contract for ___") mais désignent deux appels d'offres **distincts** (référence différente — `9205896` vs `9205898` — produit différent : aides auditives/diagnostic vs aides visuelles). `deduplicate.py` (méthode `hash_similarity`, lignes 176-190) ne compare les références exactes que pour un court-circuit "match exact" (`item_ref == unique_ref`) ; comme elles diffèrent, le code retombe sur `fuzz.ratio()` du seul texte du titre (ligne 195), qui atteint 77,7 % — au-dessus du seuil de 75 % — l'item est marqué `is_duplicate=True`, `duplicate_reason: "similarity_77%"`, et **définitivement exclu** de `unique_items` avant même d'atteindre `persist_notices`. Faux négatif de dédoublonnage : deux avis réels et distincts fusionnés à tort en un seul.
+- `persist_notices.json` : `{}` (vide) — run entier en échec avant tout commit (Finding #1, avertissement en tête de section BF). Répartition du batch de 24 items envoyés à `persist_notices` (Finding #1) : **UNGM a contribué 14 des 24 items** — la majorité du batch.
+- `notices` (DB, `source_id=10`) : **0 ligne.** Requête et sortie brute (exécutée le 2026-09-01) :
+```
+$ ssh -i ~/.ssh/id_ed25519 tender-ai@195.35.48.198 \
+  "docker exec staging_postgres psql -U tenderai -d tenderai_bf -c \
+  \"SELECT n.id, n.title, n.ref_no, n.deadline_at, n.is_duplicate, n.duplicate_of_id, cns.is_relevant, cns.relevance_score, cns.classification_method FROM notices n LEFT JOIN company_notice_status cns ON cns.notice_id=n.id AND cns.company_id=1 WHERE n.source_id=10 ORDER BY n.created_at DESC LIMIT 50;\""
+
+ id | title | ref_no | deadline_at | is_duplicate | duplicate_of_id | is_relevant | relevance_score | classification_method
+----+-------+--------+-------------+--------------+-----------------+-------------+-----------------+------------------------
+(0 rows)
+```
+Résultat attendu et non spécifique à UNGM (Finding #1, avertissement en tête de section BF) — mais UNGM est ici la source dont la propre donnée a **causé** le crash transversal (voir investigation ciblée ci-dessous), contrairement à Joffres.net/UEMOA/Enabel qui n'ont subi que le rayon d'impact collatéral. Aucune ligne `company_notice_status` n'existe (livraison jamais déclenchée) : aucun faux positif de classification ne peut être vérifié pour cette source sur ce run.
+
+**Investigation ciblée — la notice qui a fait planter le run (`LRFP-2026-9205898`) :** vérifiée en direct sur le site le 2026-09-01 (`https://www.ungm.org/Public/Notice/312944`) :
+```
+UNICEF China Tender LRFP-2026-9205898 LTA Contract for Vision Aids
+UNICEF … Reference: LRFP-2026-9205898
+Published on: 01-Sep-2026
+Deadline on: 29-Sep-2026 11:00 (GMT 8.00)
+… "it will be appreciated if you could provide your quotation ... no later than 11:00 AM on 29 September 2026 (GMT+8)"
+… "投标截止日期2026年9月29日上午十一点整（北京时间）"（29 septembre 2026）…
+```
+**L'avis est réel** (visible en direct sur `ungm.org` aujourd'hui, avec documents PDF/annexes attachés, adresse de contact nominative) et **sa date limite n'est ni ambiguë ni malformée sur le site source** : UNGM affiche le format `DD-Mon-YYYY` (`29-Sep-2026`), non ambigu puisque le mois est écrit en toutes lettres, et le corps du texte confirme deux fois indépendamment "29 September 2026" et "2026年9月29日" (29 septembre). **Ce n'est donc pas une donnée UNGM malformée à la source** — la malformation est introduite en aval, par le pipeline lui-même, en deux étapes cumulatives :
+
+1. `fetch_ungm.py::_normalize_ungm_date()` (lignes 144-167) reformate volontairement `"29-Sep-2026"` (non ambigu) en `"29-09-2026"` (ambigu, tout-numérique, ordre jour-mois) — jetant l'information désambiguïsante (le nom du mois) sans nécessité.
+2. `persist_notices.py` (ligne 85 : `deadline_at=item.get("deadline_at") or item.get("deadline")`) assigne cette chaîne brute directement à `Notice.deadline_at`, une colonne `DateTime` (`models.py` ligne 138) — **sans jamais la parser en objet `date`/`datetime` Python**. SQLAlchemy transmet donc la chaîne telle quelle à psycopg2, qui la fait interpréter par PostgreSQL selon le paramètre de session `datestyle`, confirmé sur staging :
+```
+$ ssh -i ~/.ssh/id_ed25519 tender-ai@195.35.48.198 \
+  "docker exec staging_postgres psql -U tenderai -d tenderai_bf -c \"SHOW datestyle;\""
+ DateStyle
+-----------
+ ISO, MDY
+(1 row)
+```
+En `MDY`, `"29-09-2026"` est lu comme mois=29 → `DatetimeFieldOverflow` (le crash documenté au Finding #1).
+
+**Ce défaut est-il spécifique à UNGM ?** Deux couches distinctes, à ne pas confondre :
+- Le défaut **profond** — assigner une chaîne de date brute non parsée à une colonne `DateTime`, sans jamais fixer/normaliser le `datestyle` de session ni convertir en objet `date` avant l'INSERT — est **transversal**, pas propre à UNGM : `parse_extract.py` (branches DGCMEF/UEMOA génériques) extrait lui aussi des dates via regex sous forme de chaînes brutes (`r"(\d{1,2}[/\-]\d{1,2}[/\-]\d{2,4})"`, jamais converties en objet `date`), assignées à `deadline_at` de la même façon non parsée. C'est très exactement le défaut déjà documenté par le Finding #1 (Tâche 1) au niveau architecture de `persist_notices.py` — pas de redite nécessaire ici.
+- Ce qui **est** spécifique à UNGM : `_normalize_ungm_date()` est la seule étape de tout le pipeline qui prend une date **déjà non ambiguë** à la source (mois en toutes lettres) et la reformate activement vers un format **ambigu**. Les autres sources BF (DGCMEF, UEMOA, Joffres.net) écrivent nativement leurs dates en `DD/MM/YYYY` ou `DD-MM-YYYY` — déjà ambiguës dès la source, le problème leur préexistait donc de toute façon. UNGM, à l'inverse, *introduit* l'ambiguïté par un choix de code local et évitable : conserver le format ISO `YYYY-MM-DD` (ou un objet `date`) dans `_normalize_ungm_date()` aurait suffi à empêcher ce cas précis de faire planter le run, indépendamment du fix architectural plus large de `persist_notices.py`.
+- Corollaire plus sournois, signalé ici : ce mécanisme ne plante bruyamment que lorsque `jour > 12` (comme aujourd'hui, 29). Pour toute notice UNGM future dont le jour de deadline est ≤ 12, la même chaîne ambiguë serait **silencieusement mal interprétée par PostgreSQL** (jour et mois inversés) **sans jamais lever d'erreur ni d'alerte**, corrompant silencieusement `deadline_at` en base — un problème plus insidieux que le crash observé aujourd'hui, resté non détecté jusqu'ici précisément parce qu'il ne casse rien.
+
+**Gaps constatés :**
+
+| Titre | Vu par le pipeline ? | Étage où perdu/faux positif | Cause racine | Étiquette (bug/archi/techno) | Sévérité | Preuve |
+|---|---|---|---|---|---|---|
+| Next Generation Firewall and Secure Web Gateway (UN Secretariat, réf. EOIUNPD24643, notice 311928) — manifestement pertinent pour une entreprise IT (cybersécurité réseau) | Non | Fetch (`fetch_listings`, branche `ungm`) | `fetch_ungm.py::fetch_ungm_listings()` envoie `"PageIndex": 0` codé en dur (ligne 28), sans boucle de pagination, alors que le endpoint legacy plafonne à 15 lignes/page quel que soit `PageSize` demandé | bug logique | Critique | Reproduction `curl` PageIndex=0 vs PageIndex=1 : 15 `notice_id` disjoints (`comm -12` → 0 chevauchement) ; notice 311928 confirmée en direct sur `ungm.org` (deadline 31-Aug-2026, publiée 21-Aug-2026) |
+| Les ~30-39 autres avis actifs Burkina Faso au-delà de la page 0 (dont l'avis PNUD/UNDP-BFA-00734 « Aquisition et installations d'équipements informatiques », également vu côté Joffres.net — cf. Tâche 3) — vérité terrain UI officielle : 54 au total pour ce filtre pays, contre 15 récupérés | Non | Fetch (`fetch_listings`, branche `ungm`) | Même cause que ci-dessus — perte structurelle, pas un cas isolé | bug logique | Critique | UI officielle : « Displaying results 1 to 45 of 54 » ; `fetch_listings.json` : 15 listings seulement ; recoupement de référence `UNDP-BFA-00734` avec la Tâche 3 |
+| UNICEF China Tender LRFP-2026-9205896 LTA Contract for Hearing Aids and Diagnosis Equipment | Oui, jusqu'à `parse_extract` inclus (15/15) ; perdu à `deduplicate` | Dédoublonnage (`deduplicate`, méthode `hash_similarity`) | Faux positif de similarité fuzzy sur titre gabarit (`fuzz.ratio` = 77,7 % > seuil 75 %) entre deux avis UNICEF China distincts (références et produits différents) — comparaison de référence exacte court-circuitée uniquement en cas de match, pas de mismatch explicite | bug logique | Modérée (perte réelle et vérifiée, mais pertinence IT non évidente — équipement médical) | `parse_extract.json` : 15/15 UNGM présents ; `deduplicate.json` : 14/15, item absent sans `duplicate_of_id` ; calcul indépendant `rapidfuzz.fuzz.ratio()` = 77,70706... ; `tenderai-infra/settings.yaml` lignes 559-560 (seuil 0.75, méthode hash_similarity) |
+| UNICEF China Tender LRFP-2026-9205898 LTA Contract for Vision Aids (notice à l'origine du crash du run BF entier) | Oui, jusqu'à `deduplicate` inclus (`is_duplicate: false`, 1/1 survivant) | Persist (`persist_notices`) | Date UNGM native non ambiguë (`29-Sep-2026`) reformatée en chaîne ambiguë (`29-09-2026`) par `_normalize_ungm_date()` (`fetch_ungm.py`), puis assignée sans parsing à une colonne `DateTime` (`persist_notices.py` ligne 85) ; interprétée `MDY` par la session Postgres (`datestyle` confirmé `ISO, MDY`) → `DatetimeFieldOverflow`. Contribution spécifique à UNGM : la perte de l'information désambiguïsante (nom du mois) lors de la normalisation — le défaut plus profond (pas de parsing de date avant persist) est transversal, déjà documenté Finding #1 | bug logique | Critique (a fait échouer tout le run BF, toutes sources confondues, 3 fois en 24h — voir Finding #3) | Vérifié en direct sur `ungm.org/Public/Notice/312944` (« Deadline on: 29-Sep-2026 11:00 ») ; `fetch_ungm.py` lignes 28, 144-167 ; `persist_notices.py` ligne 85 ; `models.py` ligne 138 (`Column(DateTime, ...)`) ; `SHOW datestyle` → `ISO, MDY` ; message d'erreur exact au Finding #1 |
+| Les 13 autres avis UNGM ayant survécu jusqu'à `deduplicate` (14 items au total dans `deduplicate.json`, moins la notice ci-dessus) | Oui, jusqu'à `deduplicate` inclus | Persist (`persist_notices`) | Non spécifique à UNGM : transaction unique tout-ou-rien du run BF entier (`persist_notices.py`, un seul `db.commit()` après la boucle, aucun commit/savepoint par item) qui échoue à cause de la notice ci-dessus — voir Finding #1 | bug logique | Critique | `deduplicate.json` : 14 items `source: "ungm"`, tous `is_duplicate: false` ; Finding #1 (analyse de code + preuve empirique du batch INSERT de 24 lignes, dont 14 UNGM) |
+
+**Verdict :** UNGM cumule trois défauts indépendants, à trois étages différents, tous corrigibles par un changement de code localisé (aucun n'est une limite architecturale ni technologique) :
+
+1. **Fetch — perte majoritaire par pagination absente** (le plus sévère en volume) : le endpoint utilisé plafonne à 15 résultats/page et le code ne boucle jamais au-delà de `PageIndex=0`, alors que la pagination fonctionne bel et bien côté serveur (vérifié : page 1 renvoie 15 avis entièrement distincts) et que la vérité terrain officielle du site rapporte 54 avis actifs pour ce filtre pays, contre 15 vus par le pipeline — une perte d'au moins 39 avis/jour, dont au moins un manifestement pertinent pour une entreprise IT (pare-feu nouvelle génération) et un confirmé en doublon avec Joffres.net (Tâche 3). **Aucun signe de blocage anti-bot** n'a été observé (HTTP 200 propre, contenu complet, aucune trace CAPTCHA/Cloudflare) — la mise en garde anti-bot de `docs/PROJECT_STATUS.md` concernant UNGM vise les fetchs Playwright nus, pas le mécanisme `httpx`+POST-JSON utilisé ici ; **pas de limite technologique à documenter**, uniquement une boucle de pagination manquante.
+2. **Dédoublonnage — un faux positif de similarité vérifié** : deux avis UNICEF China distincts (aides auditives vs aides visuelles, références différentes) fusionnés à tort car leur titre suit un gabarit à 77,7 % de similarité textuelle, au-dessus du seuil de 75 % configuré — un avis réel perdu silencieusement sans trace de la raison dans les logs de nœud (qui ne loguent que les survivants).
+3. **Persist — contribution spécifique au crash transversal du Finding #1** : la donnée UNGM à l'origine du `DatetimeFieldOverflow` qui a fait échouer tout le run BF aujourd'hui était, sur le site source, une date parfaitement valide et non ambiguë (`29-Sep-2026`) — ce n'est donc *pas* un cas de « donnée UNGM malformée » comme le laissait supposer le message d'erreur brut, mais un artefact introduit par la normalisation `_normalize_ungm_date()` du pipeline lui-même (perte volontaire du nom du mois, désambiguïsant), combiné au défaut architectural transversal déjà identifié (absence de parsing de date avant `persist_notices`, Finding #1). Un correctif localisé à `_normalize_ungm_date()` (conserver l'ISO `YYYY-MM-DD`) aurait suffi à éviter que *cette* notice précise ne déclenche le crash — sans se substituer au correctif architectural plus large nécessaire pour les autres sources.
+
+Sévérité globale de la source : **critique** — entre la perte majoritaire par pagination (72 % des avis actifs jamais vus) et la contribution directe au crash qui a fait perdre l'intégralité de la collecte BF du jour, UNGM est la source dont les défauts ont le plus large rayon d'impact sur ce run, alors même qu'aucun de ses trois défauts n'exige de refonte architecturale ou technologique pour être corrigé.
 
 ### UEMOA (source id 11, parser_type html-tender)
 _(rempli par sa propre tâche — Task 5)_
