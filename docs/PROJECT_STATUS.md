@@ -179,8 +179,9 @@ Décision initiale : finir le chantier 3 sur le monorepo puis re-sync `tenderai-
 ## Actions immédiates suggérées
 
 1. **Tâche 12 (cutover staging) est terminée et validée** (backend+infra+frontend, voir "Chantier 1" ci-dessus) — rien à faire ici.
-2. **Nettoyage/renommage "BF"** — ✅ terminé (sous-projets A et B, voir les deux sous-sections dédiées ci-dessus). Reste : le smoke-test CLI/`docker compose ps worker` en direct sur le serveur staging (accès SSH non disponible dans cette session — à faire par l'utilisateur si souhaité), et la vérification navigateur en direct (identifiants staging non disponibles).
+2. **Nettoyage/renommage "BF"** — ✅ intégralement terminé et vérifié en direct (sous-projets A et B, y compris smoke-test CLI/statut worker par SSH et vérification navigateur — voir sous-sections dédiées ci-dessus, 2026-09-01) — rien à faire ici.
 3. Réconcilier `main` et `staging` sur ce monorepo (doublon de commits docs du chantier 1) — nettoyage différé, non bloquant.
 4. Chantier 4 (audit qualité des pipelines) — pas commencé, à démarrer sur `tenderai-backend` quand souhaité.
 5. Tâches 13 (cutover prod) et 14 (archivage monorepo) restent bloquées en attente de confirmation explicite de l'utilisateur.
 6. **Spike Scrapling** (tâche autonome, voir sous-section dédiée sous le chantier 4) — à planifier quand souhaité.
+7. Lien direct "Utilisateurs filtrés par cette entreprise" depuis `/companies` — gap produit mineur, non bloquant, jamais demandé explicitement (voir chantier 5 sous-projet B ci-dessus).
