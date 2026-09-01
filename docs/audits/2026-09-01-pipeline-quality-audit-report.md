@@ -50,6 +50,49 @@ En creusant l'historique des runs BF (Finding #3 ci-dessous) pour dater l'appari
 | 2026-08-11 | harvest | failed | `'content'` (même bug distinct que 08-20) |
 | 2026-08-08 | harvest | completed | — (`unique_items: 0`) |
 
+**Requête SQL utilisée (ré-exécutée le 2026-09-01 pour cette correction, contre `staging_postgres`) :**
+```bash
+ssh -i ~/.ssh/id_ed25519 tender-ai@195.35.48.198 \
+  "docker exec staging_postgres psql -U tenderai -d tenderai_bf -c \
+  \"SELECT id, run_type, status, started_at, left(error_message, 180) AS error_excerpt \
+     FROM runs WHERE country_id=(SELECT id FROM countries WHERE code='BF') \
+     ORDER BY started_at DESC LIMIT 20;\""
+```
+(Pas de filtre sur `run_type` : les 2 lignes `delivery` `completed` du 09-01 07:00:06 et du 08-29 07:00:04 occupent 2 des 20 lignes retournées, ce qui explique que la fenêtre des 18 runs `harvest` couverts par la table ci-dessus s'arrête pile au 2026-08-08.)
+
+**Sortie brute (extraits, par classe d'erreur — colonnes `id | run_type | status | started_at | error_excerpt`) :**
+```
+785adda4-f28c-4f3c-af0a-74b7e775d0b5 | harvest | failed | 2026-09-01 21:20:45.340424 |
+  (psycopg2.errors.DatetimeFieldOverflow) date/time field value out of range: "29-09-2026"
+  LINE 1: ...P-2026-9205898', 'UNICEF', 'Autre', '01-09-2026', '29-09-202...
+
+976dea9a-3da9-442a-a493-d40d43d78a07 | harvest | failed | 2026-09-01 21:12:08.366465 |
+  (psycopg2.errors.DatetimeFieldOverflow) date/time field value out of range: "29-09-2026"
+  LINE 1: ...P-2026-9205898', 'UNICEF', 'Autre', '01-09-2026', '29-09-202...
+
+bff78c36-0135-451f-af4c-8cf296d053e1 | harvest | failed | 2026-09-01 07:00:03.290028 |
+  (psycopg2.errors.DatetimeFieldOverflow) date/time field value out of range: "29-09-2026"
+  LINE 1: ...P-2026-9205898', 'UNICEF', 'Autre', '01-09-2026', '29-09-202...
+
+277b697c-3297-419d-a1b2-294e8bccdde1 | harvest | failed | 2026-08-29 07:00:02.744472 |
+  (psycopg2.errors.DatetimeFieldOverflow) date/time field value out of range: "28-08-2026"
+  LINE 1: ...Branch (SECTOR)', 'rfx_10044_HQ', 'ILO', 'Autre', '28-08-202...
+
+b879a23c-f3e2-4a6f-8d3b-4832ab3c61ae | harvest | completed_with_warnings | 2026-08-22 07:00:00.440185 |
+  Email delivery failed but report is available on MinIO: send_report_email returned False (SMTP rejected delivery)
+
+88f18ab1-21bf-4b1a-8014-7792382118e4 | harvest | failed | 2026-08-20 07:00:00.469763 | 'content'
+e6f3d8cb-8550-4901-86b9-445fbc3dcde6 | harvest | failed | 2026-08-11 07:00:00.655798 | 'content'
+
+656a10ea-96bd-4b1c-98ea-6a80d0f39632 | harvest | completed_with_warnings | 2026-08-15 07:00:00.392437 |
+  Failed to fetch Joffres.net - Page de Recherche: HTTP 502: Bad Gateway
+102bc3dc-ec22-4502-8405-072be46e6bd1 | harvest | completed_with_warnings | 2026-08-13 07:00:00.303762 |
+  Failed to fetch Joffres.net - Page de Recherche: Request timeout
+bf38ab5d-1b61-45d4-820e-dc77baae1375 | harvest | completed_with_warnings | 2026-08-12 07:00:00.829867 |
+  Failed to fetch Joffres.net - Page de Recherche: Request timeout
+```
+Les runs `completed` restants de la fenêtre (08-27, 08-26, 08-25, 08-21, 08-19, 08-18, 08-14, 08-08) retournent `error_excerpt` NULL/vide — cohérent avec un `status=completed` sans erreur enregistrée ; leur anomalie `unique_items: 0` (Finding #2) n'apparaît pas dans cette colonne et provient de `counts_json`, vérifié séparément par run via `SELECT counts_json FROM runs WHERE id='<run_id>';` pour chacun des 10 runs `completed`/`completed_with_warnings` cités.
+
 **Conclusion sur la récurrence :** le `DatetimeFieldOverflow` n'est pas un incident isolé provoqué par l'audit — il a fait échouer le run planifié quotidien de production **ce matin même** (07:00, avant toute action de cet audit), et avait déjà fait échouer le run du 2026-08-29 avec une notice/date différente (donc pas spécifique à une seule notice UNGM buggée — c'est une classe de bug qui se reproduira à chaque nouvelle notice UNGM dont la date déborde). Combiné au Finding #2, la persistance BF est effectivement cassée en production depuis au moins le 2026-08-08 (début de la fenêtre observée) : soit par crash direct (4 runs sur 20), soit par `unique_items: 0` sur les runs "réussis" (cause distincte, non résolue). Le mail de livraison quotidien continue d'être envoyé (`emails_sent: 1` ou plus sur les runs completed) mais avec un rapport vide de nouvelles notices, sans qu'aucune alerte ne signale que la collecte réelle est à l'arrêt.
 
 ### Fix appliqué avant re-déclenchement (action infra, hors périmètre "no fixes")
