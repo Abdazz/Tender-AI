@@ -106,7 +106,55 @@ docker exec -u root staging_api chown -R tenderai:tenderai /app/logs/nodes
 Le `DatetimeFieldOverflow` lui-même n'a **pas** été corrigé, contourné, ni la notice UNGM en cause écartée — conformément à la consigne, il a été laissé se reproduire pour capturer cette preuve.
 
 ### DGCMEF (source id 8, parser_type pdf_rag)
-_(rempli par sa propre tâche — Task 2)_
+
+**Particularité structurelle de cette source :** `https://www.dgcmef.gov.bf/fr/appels-d-offre` ne liste pas des avis individuels — c'est une liste de bulletins PDF quotidiens (« Quotidien »), chacun regroupant plusieurs dizaines d'avis (nouveaux appels d'offres + résultats provisoires). Le `parser_type` `pdf_rag` est conçu pour cela : télécharger le PDF du jour puis en extraire les avis individuels par LLM. La « vérité terrain » pertinente n'est donc pas la page de listing elle-même mais le contenu du PDF du jour.
+
+**Vérité terrain (navigateur Chrome, 2026-09-01 ~21:40 UTC) :**
+
+Page `/fr/appels-d-offre` — 10 bulletins listés, le plus récent étant celui du jour même :
+| Titre | Fichier | Taille |
+|---|---|---|
+| Quotidien n°4478 - Mardi 01 septembre 2026 | Quotidien N°4478.pdf | 1.68 Mo |
+| Quotidien n°4477 - Lundi 31 août 2026 | Quotidien N°4477.pdf | 2.2 Mo |
+| Quotidien n°4476 - Vendredi 28 août 2026 | Quotidien N°4476.pdf | 4.05 Mo |
+| Quotidien n°4475 - Jeudi 27 août 2026 | Quotidien N°4475.pdf | 2.16 Mo |
+| Quotidien n°4473-4474 - Mar 25 & Mer 26 août 2026 | Quotidien n°4473-4474.pdf | 3.56 Mo |
+| … (5 autres, jusqu'au 18 août 2026) | | |
+
+Téléchargement indépendant du PDF du jour (`Quotidien N°4478.pdf`, hors pipeline, via `curl`) pour établir la vérité terrain de fond : **1 758 977 octets, 49 pages** — taille identique à l'octet près à ce que le pipeline a effectivement récupéré (voir Step 2 ci-dessous), confirmant qu'il s'agit bien du même fichier. Extraction de son texte (`pdftotext -layout`, hors pipeline) et repérage de la section « Fournitures et Services courants » (les nouveaux avis, par opposition à « RESULTATS PROVISOIRES » qui sont d'anciens résultats à ignorer) : **22 avis individuels distincts** identifiés par leur en-tête « Avis de demande de prix » / « Avis d'Appel d'Offres », entre les pages 19 et 47, notamment :
+- ISLO (Institut Supérieur de Logistique de Ouagadougou) — *Acquisition de consommables informatiques et péri informatiques* (N°2026-096/MGDP/SG/ISLO/DG/PRCP, dépôt avant le 10/09/2026) — **manifestement pertinent** pour une entreprise IT (consommables informatiques).
+- École Polytechnique de Ouagadougou — Acquisition et installation de lampadaires solaires.
+- INFPE — Acquisition de matelas et housses.
+- Communes de Foutouri, Douroula, Karangasso-Sambla, Poa, Kombissiri, Laye, Toma, Ouagadougou, Ouo — travaux divers (voirie, salles de classe, boutiques de marché, forages, CSPS…).
+- ADEU, plusieurs régions (Bankui, Guiriko, Kadiogo, Liptako, Nazinon, Oubri, Sourou, Tannounyan) — travaux et aménagements.
+
+Ces 22 avis sont réels, datés d'aujourd'hui, avec des dates limites de dépôt à venir (10/09 au 15/09/2026) — ce n'est en aucun cas un bulletin vide.
+
+**Résultat du pipeline (run `785adda4-f28c-4f3c-af0a-74b7e775d0b5`) :**
+
+- `fetch_listings.json` : **succès**. Le nœud a téléchargé exactement `http://www.dgcmef.gov.bf/sites/default/files/2026-09/Quotidien%20N%C2%B04478.pdf`, `status: "success"`, `size: 1758977`, `content_type: application/pdf` — taille identique à l'octet près au fichier vérifié indépendamment ci-dessus. Le nœud a correctement identifié et récupéré le bulletin du jour (pas un bulletin périmé). **Le fetch n'est pas en cause.**
+- `extract_item_links.json` / `fetch_items.json` : le PDF passe intact d'étape en étape comme un item unique (`type: pdf_rag`), toujours `status: success`, contenu de même taille.
+- `parse_extract.json` (27 items au total, toutes sources BF confondues) : **0 item avec `source: "dgcmef"`** ou provenant de la branche `pdf_rag`. Répartition constatée : `ungm: 15, "UEMOA - Appels d'offres": 10, "Enabel - Marchés publics Burkina Faso": 1, joffres.net: 1` — DGCMEF est absent à 100%.
+- `notices` (DB, `source_id=8`) : 0 ligne — **résultat attendu et non significatif ici**, puisque la table entière est vide pour BF suite au crash de `persist_notices` documenté au Finding #1 (voir l'avertissement en tête de section BF). Cela dit, même si le run n'avait pas crashé, 0 aurait été le résultat : le PDF n'a produit aucun item dès `parse_extract`, donc rien ne serait arrivé jusqu'à `persist_notices` de toute façon.
+
+**Analyse du code (cause racine) :** `parse_extract.py` route les items `parser_type == "pdf_rag"` (lignes 588-616) vers `parse_pdf_rag.py::parse_pdf_with_rag`, appelé avec `use_direct_extraction` à sa valeur par défaut `True` — c'est-à-dire que malgré le nom de la source (« … avec RAG ») et la config `settings.yaml` (`rag: {enabled: true, chunk_size: 4096, ...}`), le code **n'utilise pas ChromaDB/la recherche vectorielle** : il extrait le texte intégral du PDF (Docling, OCR désactivé, fallback pdfminer — lignes 20-89 de `parse_pdf_rag.py`), le découpe en chunks de 4096 caractères (`chunk_size` lu depuis `state.country_config["rag"]`, confirmé en base : ~70 chunks pour un texte de ~297 Ko), puis appelle `extract_tenders_structured()` (`extraction.py`) **une fois par chunk, séquentiellement**, en LLM. Sur staging, `LLM_PROVIDER=groq` — `extraction.py` lignes 51-59 route Groq systématiquement vers `_extract_tenders_json_fallback` (contournement documenté dans le code : *"Groq wraps parameters in nested objects causing validation failures"*). Chaque échec de chunk (exception réseau, JSON invalide, validation Pydantic) est capturé et **silencieusement ignoré** (`parse_pdf_rag.py` lignes 412-418 : `except Exception: logger.error(...); continue` — pas de fallback réel malgré le message de log ; même chose au niveau du nœud, `parse_extract.py` lignes 609-616, dont le message *"falling back to standard parsing"* est trompeur : aucun fallback n'est implémenté pour `pdf_rag`, contrairement à d'autres branches du même fichier qui en ont un explicite, p.ex. `pdf_quotidien`/`parse_pdf_structured` lignes 824-853).
+
+Vérifications indépendantes effectuées pour circonscrire la cause exacte :
+- **Texte du PDF exploitable** : confirmé — `pdftotext -layout` (hors pipeline) extrait un texte français propre et complet, sans artefact d'OCR raté ; les 22 avis y sont clairement délimités. Ce n'est donc pas un problème de mise en page PDF illisible pour l'extraction de texte.
+- **Clé API Groq valide** : confirmée — `curl https://api.groq.com/openai/v1/models` avec la clé configurée sur staging renvoie `200`. Ce n'est donc pas une panne d'authentification/réseau globale vers le fournisseur LLM.
+- **Point de défaillance exact dans la boucle de ~70 appels LLM séquentiels** : **non déterminé** — les logs stdout du process qui a exécuté ce run n'ont pas été conservés (`docker logs staging_api`/`staging_worker` sur la fenêtre du run ne montrent que le trafic des health-checks MinIO ; le run a été déclenché par un `docker exec` dont la sortie n'a pas été journalisée ailleurs, et les JSON de nœuds capturés par Task 1 ne contiennent que le résultat final agrégé de `parse_extract`, pas de détail par chunk). **Ambiguïté signalée explicitement** : il est possible que ce soit (a) une erreur systématique et reproductible sur chaque appel (config/prompt/schema), (b) une dégradation liée au volume d'appels séquentiels sur un même run (rate-limit Groq atteint après N chunks), ou (c) une combinaison — impossible de trancher sans rejouer l'extraction avec logging détaillé conservé, ce qui sortirait du périmètre « diagnostic seul, aucune correction » de ce chantier.
+- **Corroboration historique** : le Finding #2 (déjà documenté plus haut dans cette section BF, trouvé par Task 1) note que **tous** les runs BF `completed` de l'échantillon 08-08 à 08-27 rapportent `unique_items: 0` malgré `items_parsed` non nul, avec une piste explicite pointant vers `parse_extract` en amont de `deduplicate`. Le constat de cette tâche (0 item DGCMEF y compris un jour sans crash de persistance) est cohérent avec cette anomalie plus large : DGCMEF ne contribue vraisemblablement aucun item à la base depuis plusieurs semaines, indépendamment du bug `DatetimeFieldOverflow` du jour.
+
+**Gaps constatés :**
+
+| Avis (vérité terrain) | Vu au fetch ? | Vu au parse ? | En base (`notices`) ? | Cause racine |
+|---|---|---|---|---|
+| ISLO — Acquisition de consommables informatiques et péri informatiques (manifestement pertinent IT) | Oui — le PDF contenant cet avis est bien téléchargé (`fetch_listings.json`, taille identique à l'original) | **Non** — absent des 27 items de `parse_extract.json` | Non (table vide, cf. Finding #1 — de toute façon 0 en amont) | **Parse** — échec d'extraction dans la branche `pdf_rag` (`parse_pdf_rag.py::parse_pdf_with_rag`, mode extraction directe + LLM Groq par chunk) ; mécanisme précis non isolé (voir ci-dessus), mais le point de rupture est confirmé entre `fetch_items` (succès, PDF intact) et `parse_extract` (0 sortie) |
+| Les 21 autres avis identifiés dans le Quotidien n°4478 (travaux communaux, fournitures diverses…) | Idem — même PDF, même fetch réussi | **Non** — même constat, 0/22 | Non | Même cause racine — perte à 100%, pas un cas isolé |
+
+Aucun cas de faux positif de classification à documenter pour cette source : puisque 0 item DGCMEF atteint même `parse_extract`, rien n'atteint `classify`/`company_notice_status` — il n'y a rien à vérifier côté sur-classification pour cette source sur ce run.
+
+**Verdict :** DGCMEF est une perte totale et systématique dès l'étage `parse` — pas un problème de couverture partielle. Le fetch fonctionne parfaitement (bon fichier, bonne taille, à jour) et le contenu est un texte PDF propre et richement exploitable (22 avis réels et actuels vérifiés indépendamment, dont au moins un manifestement pertinent pour une entreprise IT), mais la chaîne d'extraction LLM-par-chunk de la branche `pdf_rag` (qui, malgré son nom, n'utilise pas de RAG vectoriel — c'est une extraction directe séquentielle par LLM) ne produit aucun item en sortie, sans qu'aucune alerte ne remonte au niveau du run (`counts_json`/`errors`) pour signaler cette perte silencieuse ; cela concorde avec l'anomalie `unique_items: 0` déjà repérée sur plusieurs semaines de runs historiques (Finding #2), suggérant un problème persistant et non un accident isolé au run d'aujourd'hui. Étiquette : **bug logique/config** (le contenu est extractible, la clé LLM est valide — rien n'indique une limite structurelle de l'approche PDF+LLM elle-même) plutôt qu'une limite technologique ; sévérité **critique** compte tenu de la perte à 100% et de l'absence totale de signal d'alerte. Cause exacte (config/prompt/schema vs rate-limit Groq vs autre) à confirmer par rejeu instrumenté lors de la phase de correction — hors périmètre de ce chantier de diagnostic.
 
 ### Joffres.net (source id 9, parser_type html-listing)
 _(rempli par sa propre tâche — Task 3)_
