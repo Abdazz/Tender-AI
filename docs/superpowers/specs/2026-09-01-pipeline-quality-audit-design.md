@@ -20,7 +20,7 @@ Correction actée le 2026-09-01 : TenderAI n'est **pas** centré Burkina Faso, c
 - **BF** (5 sources, toutes activées) : DGCMEF (`pdf_rag`), Joffres.net (`html-listing`), UNGM (`ungm`), UEMOA (`html-tender`), Enabel (`html-tender`).
 - **CA** (16 sources, 7 activées / 9 désactivées) : Achats Canada, Ville de Montréal, Le Devoir, Nova Scotia, UNDP, Commonwealth, Palladium Group (activées) ; Bonfire Hub Canada, Public Procurement Belgium, Guinea Tenders, UNDP Africa, World Bank, NATO NSPA, BAD, OMD/WCO, AFD DGMarket (désactivées). Certaines de ces sources sont des organismes internationaux (UNDP, World Bank...) rattachés au tenant CA sans logique géographique apparente — traité comme un fait à vérifier, pas une anomalie présumée.
 
-L'audit couvre les deux pays. Nettoyage doc (item de clôture, cf. Livrables) : reformuler les passages « pour le Burkina Faso » dans les deux `CLAUDE.md`/`PROJECT_STATUS.md` pour refléter multi-tenant + multi-pays.
+L'audit couvre les deux pays. Nettoyage doc (item de clôture, cf. Livrables) : vérification faite le 2026-09-01, la formulation fautive (« harvester for Burkina Faso ») ne vit en réalité que dans les deux fichiers `CLAUDE.md` racine — `/home/yulcom/web/tenderai/CLAUDE.md:7` et `/home/yulcom/web/tender-ai/CLAUDE.md:7` — pas dans `tenderai-backend/CLAUDE.md` (propre) ni dans `PROJECT_STATUS.md` (les occurrences BF y sont des références légitimes à l'un des deux pays actifs, pas un cadrage fautif). Corrigés dans ce chantier.
 
 ### 2. Méthode retenue — trace de bout en bout avec vérité terrain indépendante
 Pour chaque source **activée** :
@@ -61,7 +61,7 @@ Comme tous les chantiers précédents : aucun run ni aucune requête sur la prod
 ## Livrables
 
 1. **Rapport d'audit** : `docs/audits/2026-09-01-pipeline-quality-audit-report.md` (nouveau dossier — ce n'est pas un design de build, donc pas rangé sous `specs/`). Une section par source activée (méthode appliquée, vérité terrain, écarts trouvés, causes racines, sévérité), une section courte par source désactivée, une synthèse priorisée globale (quels écarts sont les plus impactants, lesquels sont de simples bugs vs des limites structurelles).
-2. **Nettoyage doc BF-centric** : correction des formulations « pour le Burkina Faso » dans `tenderai-backend/CLAUDE.md` et `tender-ai/docs/PROJECT_STATUS.md` — item de clôture trivial, inclus dans ce chantier plutôt que laissé en tâche séparée.
+2. **Nettoyage doc BF-centric** : correction de la phrase d'ouverture dans `/home/yulcom/web/tenderai/CLAUDE.md:7` et `/home/yulcom/web/tender-ai/CLAUDE.md:7` (cf. Décision 1) — item de clôture trivial, inclus dans ce chantier plutôt que laissé en tâche séparée.
 3. `docs/PROJECT_STATUS.md` mis à jour avec le statut du chantier 4 et un pointeur vers le rapport.
 
 ## Hors scope
