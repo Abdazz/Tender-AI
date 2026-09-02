@@ -865,7 +865,92 @@ Résultat attendu, non spécifique à cette source (cf. avertissement CA). Aucun
 **Verdict :** Même mécanisme qu'Achats Canada — perte totale à l'étage fetch, cause identique établie par la Tâche 7. **Étiquette : bug logique**, pas limite technologique — vérifié spécifiquement pour ce site, pas recopié : la page est elle aussi intégralement rendue côté serveur (`curl` nu suffit à récupérer les 10 liens de la page 1 et le compte total), et la seule mention de « captcha » dans le HTML est un script reCAPTCHA générique du framework, jamais déclenché comme challenge actif sur cette page. Aucune preuve d'un besoin technique réel de navigateur/anti-bot pour cette source — la cause du gap est une dépendance manquante dans l'image déployée. **Remarque secondaire, hors cause racine :** même une fois `playwright` réinstallé, la config actuelle (`max_pages: 10`) ne couvrirait que ~100 des 927 résultats actifs (pagination réelle du site : 93 pages) — un gap de couverture distinct et plus mineur, signalé ici pour une phase 2 mais non quantifié en détail (non demandé par ce brief, dont le périmètre est le diagnostic du gap partagé Playwright).
 
 ### Le Devoir (source id 15, parser_type ledevoir)
-_(rempli par sa propre tâche)_
+
+**Particularité structurelle de cette source :** `https://www.ledevoir.com/services-et-annonces/avis-publics` est une page générale d'avis publics du journal Le Devoir — **pas une page dédiée aux marchés publics**. Chaque entrée listée est un scan JPEG d'une page de journal (`data-src="…/avis/AAAA-MM-JJ.jpg"`) regroupant plusieurs annonces légales hétérogènes (avis d'appels d'offres, mais aussi successions, dissolutions de sociétés, avis de vente, etc.) ; le `parser_type` bespoke `ledevoir` (`fetch_ledevoir.py`) télécharge ces images puis appelle un LLM de vision Groq (fonction `_ocr_image_with_groq`) pour en extraire les avis structurés — c'est le node `fetch_listings` lui-même qui fait tout le travail (téléchargement + OCR), contrairement aux autres sources CA où l'extraction de liens est un étage distinct (`extract_item_links`).
+
+**Vérité terrain (navigateur Chrome, 2026-09-02, ~17:40 UTC — `curl` direct renvoie `HTTP_STATUS:403` sur ce site, navigateur requis) :**
+
+Page `/services-et-annonces/avis-publics` — **29 entrées** au total au moment de la capture (`get_page_text` sur la page rendue), correspondant à **29 images** `data-src` matchant le sélecteur du pipeline (`/avis/….jpg`, confirmé par `document.querySelectorAll('[data-src]')` filtré côté page, `jpg_avis_count: 29`). **Seule 1 de ces 29 entrées est elle-même un avis d'appel d'offres individuel et nommé comme tel** : « Avis de procédure ouverte de l'appel d'offres public 40-26-144504 | Fourniture et livraison de rouleaux de protection » (Compagnie : Partenariat du Quartier des spectacles, publié 2026-09-02). Les 28 autres entrées sont des bulletins quotidiens génériques (« Avis légaux et appels d'offres du [date] », un par jour du 2026-08-03 au 2026-09-02, deux pour le 07 août) — des scans multi-annonces dont la part réellement « appel d'offres » (par opposition à succession/dissolution/etc.) n'est pas déterminable sans OCR de chaque bulletin. **Contexte de précision pour cette source : au niveau de la liste elle-même, ~1/29 (3%) des entrées sont individuellement et manifestement des avis d'appel d'offres ; le reste est un contenu légal généraliste dont la densité procurement réelle est inconnue sans ouvrir chaque bulletin.** Un échantillon indépendant (voir plus bas, OCR du bulletin du 2026-09-01 avec un modèle Groq valide) y a trouvé environ 6 encadrés distincts (annonces légales + appels d'offres mélangés) — donc chaque bulletin contient bien du contenu réel, pas des pages vides.
+
+**Confirmation exacte du mécanisme de sélection des 7 images (reproduit indépendamment, correspond exactement au chiffre `images: 7` de la Tâche 7) :** `fetch_ledevoir.py::_extract_image_urls` (lignes 55-81) filtre les 29 URLs par une fenêtre glissante `patterns.max_days` (7 jours en config source, confirmé dans `fetch_listings.json` : `"patterns": {"max_days": 7}`), calculée par rapport au moment du fetch (`fetched_at: "2026-09-02T17:10:56"`, cutoff ≈ `2026-08-26T17:10:56`). Sur les 29 URLs, 28 portent une date `AAAA-MM-JJ` dans le nom de fichier ; l'unique exception est précisément l'avis individuel « rouleaux de protection » (`70380.jpg`, sans date dans l'URL) — dont le code ne peut donc **jamais appliquer la coupure temporelle** (le `re.search(r"(\d{4}-\d{2}-\d{2})", base)` échoue, la garde `if m:` est fausse, l'image est toujours incluse quel que soit son âge ; comportement bénin ici mais latent, non exploité en dehors du périmètre de cette tâche). Décompte des dates ≥ cutoff : `2026-09-02, 2026-09-01, 2026-08-31, 2026-08-29, 2026-08-28, 2026-08-27` = 6 images datées retenues, + 1 image non datée toujours retenue (`70380.jpg`) = **7 images**, exactement le chiffre rapporté par la Tâche 7.
+
+**Résultat du pipeline (run `1b67631c-4e8b-4650-8212-cf9e3e82c997`, `ca-nodes/nodes/fetch_listings.json`) :**
+```
+$ python3 -c "
+import json
+d = json.load(open('fetch_listings.json'))
+e = [x for x in d[0]['data'] if x['source']['id']==15][0]
+print('status:', e['status'], '| listings:', e['listings'], '| content:', e['content'])
+"
+status: success | listings: [] | content: []
+```
+Le node log lui-même ne distingue pas « 0 image trouvée » de « 7 images trouvées mais OCR échoué sur toutes » — les deux chemins de code renvoient la même forme JSON (`status: success, listings: []`). C'est le détail que la Tâche 7 avait seulement établi au niveau des logs de process bruts (`"images": 7, "total_notices": 0"`, capturés en direct pendant l'exécution du run mais non conservés sur disque) ; cette tâche l'a reconstruit indépendamment ci-dessus par relecture du code + reproduction en direct de la fenêtre `max_days`, confirmant que ce sont bien 7 images qui ont atteint l'OCR et échoué, pas zéro image trouvée. `extract_item_links.json` du même run est `{"data": []}` (le graphe s'est arrêté avant même de router par source, cf. avertissement CA en tête de section — cohérent, aucune source CA n'a produit de lien ce jour-là).
+
+**Point exact de l'échec, reproduit en direct (2026-09-02, contre l'API Groq depuis `staging_api` avec la clé de production) :**
+```
+$ docker exec staging_api python3 -c "
+import httpx
+from tenderai.config import settings
+key = settings.llm.groq_api_key.get_secret_value()
+r = httpx.post('https://api.groq.com/openai/v1/chat/completions',
+    json={'model':'meta-llama/llama-4-scout-17b-16e-instruct','messages':[{'role':'user','content':'hi'}]},
+    headers={'Authorization': f'Bearer {key}'}, timeout=30)
+print('STATUS', r.status_code); print(r.text[:1000])
+"
+STATUS 404
+{"error":{"message":"The model `meta-llama/llama-4-scout-17b-16e-instruct` does not exist or you do not have access to it.","type":"invalid_request_error","code":"model_not_found"}}
+```
+Confirme, indépendamment de la Tâche 7, la même erreur `404 model_not_found` sur le même modèle. Localisation exacte dans le code : `fetch_ledevoir.py` ligne 100, `vision_model = "meta-llama/llama-4-scout-17b-16e-instruct"` — chaîne codée en dur, une seule occurrence dans tout le fichier. Chaque appel `_ocr_image_with_groq()` (une fois par image, boucle séquentielle lignes 187-210) échoue indépendamment ; l'exception est capturée par un `try/except` local (lignes 121-150) qui logue `"Groq vision OCR failed"` et renvoie `[]` pour cette image — **aucune remontée d'erreur au niveau du node** (`fetch_listings` retourne `status: "success"` malgré 7/7 échecs internes), donc aucun signal d'alerte visible dans `counts_json`/`errors` du run.
+
+**Le fix est-il réellement un changement d'une ligne, ou une limite structurelle de l'approche OCR ? Vérifié, pas supposé :**
+- Liste des modèles actuellement actifs sur le compte Groq de production (`GET /openai/v1/models`, même clé) : `allam-2-7b, whisper-large-v3-turbo, meta-llama/llama-prompt-guard-2-22m, qwen/qwen3.6-27b, groq/compound-mini, openai/gpt-oss-20b, groq/compound, canopylabs/orpheus-v1-english, meta-llama/llama-prompt-guard-2-86m, whisper-large-v3, qwen/qwen3.8-27b, canopylabs/orpheus-arabic-saudi, openai/gpt-oss-safeguard-20b, openai/gpt-oss-120b`. Deux de ces modèles annoncent `"input_modalities": ["text", "image"]` dans les métadonnées détaillées de l'endpoint : **`qwen/qwen3.6-27b`** et **`qwen/qwen3.8-27b`** — Groq propose donc toujours des modèles de vision valides, ce n'est pas une disparition de la capacité vision chez ce fournisseur.
+- **Reproduction bout-en-bout avec un modèle actuellement valide**, même image, même prompt d'extraction JSON exact que celui utilisé en production (`_OCR_PROMPT` de `fetch_ledevoir.py`) :
+```
+$ docker exec staging_api python3 -c "
+... téléchargement de https://media1.ledevoir.com/documents/image/avis/70380.jpg?width=2000 ...
+img status 200 size 64135
+... payload avec model: 'qwen/qwen3.8-27b', même _OCR_PROMPT ...
+"
+STATUS 200
+```json
+{
+  "tenders": [
+    {
+      "title": "Fourniture et livraison de rouleaux de protection",
+      "entity": "Partenariat du Quartier des spectacles Montréal",
+      "reference": "40-26-144504",
+      "deadline": "2026-09-18",
+      "description": "Appel d'offres public pour la fourniture et la livraison de rouleaux de protection. Les documents d'appel d'offres sont disponibles à partir du 1er septembre 2026 via le SEAO."
+    }
+  ]
+}
+```
+```
+Extraction **exacte et correcte** — `title`, `entity`, `reference` (`40-26-144504`) identiques à la vérité terrain de la page de listing, `deadline` cohérente. Seule nuance opérationnelle : la réponse est enveloppée dans un bloc ```` ```json … ``` ````, ce que `json.loads(raw)` (premier essai, ligne 133) ne parse pas directement — mais le code a déjà un fallback pour ce cas exact (`re.search(r"\{.*\}", raw, re.DOTALL)`, lignes 135-136), qui fonctionne ici sans modification. **Aucun changement de code n'est donc nécessaire au-delà de la chaîne du nom de modèle.**
+- **Confirmation que l'approche OCR reste viable même sur les bulletins multi-annonces** (pas seulement l'avis isolé) : test indépendant sur le scan du bulletin du 2026-09-01 (`2026-09-01.jpg`, 1 221 139 octets) avec `qwen/qwen3.8-27b` : réponse `200`, le modèle dénombre correctement « environ 6 » encadrés distincts dans la section « AVIS LÉGAUX ET APPELS D'OFFRES » — cohérent avec un bulletin dense et exploitable, pas un scan illisible.
+
+**Verdict sur le fix :** confirmé **trivial** — un remplacement de chaîne (`meta-llama/llama-4-scout-17b-16e-instruct` → `qwen/qwen3.8-27b` ou `qwen/qwen3.6-27b`) à la ligne 100 de `fetch_ledevoir.py`, sans aucune autre modification de code, restaurerait l'extraction. Aucune preuve d'une limite structurelle de l'approche « OCR par LLM de vision » elle-même : le fournisseur propose toujours des modèles vision actifs, le prompt et le parsing JSON existants fonctionnent tels quels avec un modèle valide, et le contenu scanné (aussi bien l'avis isolé que les bulletins denses) reste lisible et correctement extrait par le modèle de remplacement testé.
+
+**Requête `notices` (source_id=15, exécutée le 2026-09-02) :**
+```
+$ ssh -i ~/.ssh/id_ed25519 tender-ai@195.35.48.198 \
+  "docker exec staging_postgres psql -U tenderai -d tenderai_bf -c \
+  \"SELECT n.id, n.title, n.ref_no, n.deadline_at, n.is_duplicate, n.duplicate_of_id, cns.is_relevant, cns.relevance_score, cns.classification_method FROM notices n LEFT JOIN company_notice_status cns ON cns.notice_id=n.id AND cns.company_id=1 WHERE n.source_id=15 ORDER BY n.created_at DESC LIMIT 50;\""
+
+ id | title | ref_no | deadline_at | is_duplicate | duplicate_of_id | is_relevant | relevance_score | classification_method
+----+-------+--------+-------------+--------------+-----------------+-------------+-----------------+------------------------
+(0 rows)
+```
+Résultat attendu, non spécifique à cette source : aucune notice CA en base à ce jour, quelle qu'en soit la cause (cf. avertissement CA en tête de section — `SELECT ... WHERE country_id=(SELECT id FROM countries WHERE code='CA') GROUP BY ...` → 0 rows, toutes sources CA confondues). Aucune ligne `company_notice_status` : aucun faux positif de classification à vérifier pour cette source.
+
+**Gaps constatés :**
+
+| Titre | Vu par le pipeline ? | Étage où perdu/faux positif | Cause racine | Étiquette (bug/archi/techno) | Sévérité | Preuve |
+|---|---|---|---|---|---|---|
+| Avis de procédure ouverte de l'appel d'offres public 40-26-144504 — Fourniture et livraison de rouleaux de protection (Partenariat du Quartier des spectacles, deadline 2026-09-18) — avis réel et individuellement identifiable, non pertinent IT lui-même (rouleaux de protection ≠ mots-clés IT), mais démontré ci-dessus comme extractible avec succès et exactitude par un modèle Groq valide | Oui, jusqu'à l'OCR inclus (image téléchargée avec succès, envoyée à Groq) | Fetch (`fetch_listings`, branche `ledevoir`, sous-étape OCR Groq Vision dans `_ocr_image_with_groq`) | `vision_model` codé en dur (`fetch_ledevoir.py` ligne 100) sur un id de modèle Groq déprécié/invalide (`meta-llama/llama-4-scout-17b-16e-instruct`, `404 model_not_found`, reproduit en direct) ; échec capturé par image sans remontée au niveau du run | bug logique | Critique | `fetch_listings.json` (`status: success`, `listings: []` malgré 7 images fetchées) ; reproduction directe `404 model_not_found` contre l'API Groq ; reproduction réussie (`200`, extraction exacte) avec `qwen/qwen3.8-27b` sur la même image |
+| Les 6 autres bulletins scannés dans la fenêtre de 7 jours (`2026-09-02`, `2026-08-31`, `2026-08-29`, `2026-08-28`, `2026-08-27`, `2026-09-01`) — contenu individuel non dénombré avis par avis, mais confirmé non-vide (≈6 encadrés légaux/appels d'offres par bulletin sur l'échantillon testé du 2026-09-01) | Non | Fetch (`fetch_listings`, branche `ledevoir`, sous-étape OCR Groq Vision) | Même cause racine — perte à 100% des 7/7 images, pas un cas isolé à l'avis individuel | bug logique | Critique | `fetch_listings.json` : `listings: []` pour la totalité de la source ; test OCR indépendant avec `qwen/qwen3.8-27b` sur le bulletin du 2026-09-01 : ~6 encadrés détectés, contenu confirmé exploitable |
+
+**Verdict :** Le Devoir est une perte totale (7/7 images, 0 avis produit) au sein même du node `fetch_listings`, cause unique et bien circonscrite : un id de modèle Groq Vision déprécié codé en dur, qui renvoie une erreur `404 model_not_found` sur **chaque** appel OCR, silencieusement absorbée par un `try/except` par image qui ne fait remonter aucune alerte au niveau du run. **Étiquette : bug logique** (et non limite technologique) — vérifié en profondeur, pas supposé : Groq propose toujours au moins deux modèles vision actifs (`qwen/qwen3.6-27b`, `qwen/qwen3.8-27b`), et l'un d'eux, testé en direct avec le prompt et le parsing JSON exacts déjà en place dans le code, a extrait l'avis de vérité terrain avec une précision parfaite (titre, entité, référence, échéance) et a également su décompter le contenu d'un bulletin dense multi-annonces. Le fix est un remplacement de chaîne d'une ligne, sans changement d'architecture ni de fournisseur ; l'approche « scan + OCR par LLM de vision » pour cette source n'est pas structurellement fragile en soi. **Point de contexte pour la précision de cette source (hors cause racine du run)** : même une fois le modèle corrigé, seule 1 des 29 entrées actuellement listées sur la page est un avis d'appel d'offres individuellement nommé — le reste est un contenu légal généraliste (bulletins quotidiens mêlant successions, dissolutions, appels d'offres, etc.) dont la densité procurement réelle par bulletin reste à mesurer avis par avis, non quantifiée ici (hors périmètre de ce diagnostic).
 
 ### Nova Scotia (source id 16, parser_type playwright)
 
