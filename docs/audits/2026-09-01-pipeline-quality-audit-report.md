@@ -905,7 +905,7 @@ Confirme, indépendamment de la Tâche 7, la même erreur `404 model_not_found` 
 **Le fix est-il réellement un changement d'une ligne, ou une limite structurelle de l'approche OCR ? Vérifié, pas supposé :**
 - Liste des modèles actuellement actifs sur le compte Groq de production (`GET /openai/v1/models`, même clé) : `allam-2-7b, whisper-large-v3-turbo, meta-llama/llama-prompt-guard-2-22m, qwen/qwen3.6-27b, groq/compound-mini, openai/gpt-oss-20b, groq/compound, canopylabs/orpheus-v1-english, meta-llama/llama-prompt-guard-2-86m, whisper-large-v3, qwen/qwen3.8-27b, canopylabs/orpheus-arabic-saudi, openai/gpt-oss-safeguard-20b, openai/gpt-oss-120b`. Deux de ces modèles annoncent `"input_modalities": ["text", "image"]` dans les métadonnées détaillées de l'endpoint : **`qwen/qwen3.6-27b`** et **`qwen/qwen3.8-27b`** — Groq propose donc toujours des modèles de vision valides, ce n'est pas une disparition de la capacité vision chez ce fournisseur.
 - **Reproduction bout-en-bout avec un modèle actuellement valide**, même image, même prompt d'extraction JSON exact que celui utilisé en production (`_OCR_PROMPT` de `fetch_ledevoir.py`) :
-```
+````
 $ docker exec staging_api python3 -c "
 ... téléchargement de https://media1.ledevoir.com/documents/image/avis/70380.jpg?width=2000 ...
 img status 200 size 64135
@@ -925,7 +925,7 @@ STATUS 200
   ]
 }
 ```
-```
+````
 Extraction **exacte et correcte** — `title`, `entity`, `reference` (`40-26-144504`) identiques à la vérité terrain de la page de listing, `deadline` cohérente. Seule nuance opérationnelle : la réponse est enveloppée dans un bloc ```` ```json … ``` ````, ce que `json.loads(raw)` (premier essai, ligne 133) ne parse pas directement — mais le code a déjà un fallback pour ce cas exact (`re.search(r"\{.*\}", raw, re.DOTALL)`, lignes 135-136), qui fonctionne ici sans modification. **Aucun changement de code n'est donc nécessaire au-delà de la chaîne du nom de modèle.**
 - **Confirmation que l'approche OCR reste viable même sur les bulletins multi-annonces** (pas seulement l'avis isolé) : test indépendant sur le scan du bulletin du 2026-09-01 (`2026-09-01.jpg`, 1 221 139 octets) avec `qwen/qwen3.8-27b` : réponse `200`, le modèle dénombre correctement « environ 6 » encadrés distincts dans la section « AVIS LÉGAUX ET APPELS D'OFFRES » — cohérent avec un bulletin dense et exploitable, pas un scan illisible.
 
