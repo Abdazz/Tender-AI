@@ -1055,13 +1055,257 @@ Résultat attendu, non spécifique à cette source (cf. avertissement CA). Aucun
 **Verdict :** Contrairement aux deux autres sources `playwright` de cette section, Nova Scotia présente une **véritable barrière anti-bot** face aux clients HTTP simples (challenge JS + CAPTCHA audio, cookies `TS...` caractéristiques d'un bot-defense de type F5/Shape) — vérifié directement, pas supposé, et pas recopié depuis Achats Canada/Montréal où aucune barrière de ce type n'a été trouvée. Un premier test avec un vrai navigateur Chromium (Playwright MCP, méthode 2) avait déjà franchi ce challenge sans friction — mais une revue indépendante de ce rapport a correctement relevé que la formulation initiale présentait cette session comme « identique en substance » au fetcher de production sans avoir vérifié le signal d'empreinte le plus pertinent pour ce type de produit anti-bot, `navigator.webdriver` (un appel Python nu `playwright.chromium.launch(headless=True)` sans patch l'expose à `true` par défaut ; la session Playwright MCP, testée séparément par la revue, l'exposait à `false`) — une équivalence non vérifiée, donc une affirmation fausse telle qu'initialement formulée, maintenant corrigée ci-dessus. La méthode 3, ajoutée en réponse à cette revue, referme le point avec un test direct reproduisant littéralement le code de `fetch_playwright.py` (même appel de lancement, même contexte, même UA, même sélecteur, zéro `add_init_script`) : `navigator.webdriver` y est confirmé à `true`, et le challenge F5/Shape ne s'est pas déclenché — contenu réel affiché, compteurs cohérents avec la méthode 2 (29 740 résultats). **L'étiquette retenue reste bug logique** (dépendance manquante) et non limite technologique — cette fois sur la base d'une preuve directe du chemin de code réel de production plutôt que d'une analogie non vérifiée. Nuance non résolue et toujours à surveiller lors de la correction : ces tests restent des exécutions ponctuelles à faible volume, pas un run soutenu/à grande échelle sous la même IP/pattern que la production — un comportement anti-bot plus agressif face à un trafic automatisé répété (rate-limiting progressif, détection comportementale à moyen terme, ou ciblage d'autres signaux d'empreinte non testés ici — canvas/WebGL, timing, etc.) reste possible et n'a pas été exclu. **Remarque secondaire distincte, hors cause racine :** contrairement à Achats Canada et Montréal, les `patterns` de cette source ne définissent aucun `item_link_selector` — même une fois `playwright` réinstallé, `fetch_playwright.py` retomberait sur son mode « texte brut » (capture de `page.inner_text("body")` en un seul blob transmis à l'extraction LLM), un chemin de code différent de celui utilisé par les deux autres sources `playwright` de cette section, non vérifié plus avant ici.
 
 ### UNDP (source id 17, parser_type tavily_extract)
-_(rempli par sa propre tâche)_
+
+**Cause racine — pas re-diagnostiquée ici :** confirmée identique à la Tâche 7 (voir avertissement CA en tête de section Canada) : `TAVILY_API_KEY` n'est pas définie dans l'environnement du conteneur `staging_api` — reconfirmé indépendamment ici :
+```
+$ ssh -i ~/.ssh/id_ed25519 tender-ai@195.35.48.198 "docker exec staging_api env | grep -i TAVILY"
+(aucune sortie)
+```
+Cette section documente uniquement la vérité terrain propre à cette source, la confirmation de son entrée dans les logs de nœuds du run CA, et le jugement d'étiquette propre à cette source (adéquation de `tavily_extract` pour ce site précis, pas supposée).
+
+**Vérité terrain (`curl`, 2026-09-02, `list_url` exact copié verbatim depuis la config DB/`fetch_listings.json`) :**
+```
+$ curl -s -o undp.html -w "HTTP_STATUS:%{http_code} SIZE:%{size_download}\n" \
+  "https://procurement-notices.undp.org/index.cfm" \
+  -A "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+HTTP_STATUS:200 SIZE:1035616
+
+$ python3 -c "
+import re
+html = open('undp.html', encoding='utf-8', errors='replace').read()
+text = re.sub(r'<script.*?</script>', '', html, flags=re.S)
+text = re.sub(r'<style.*?</style>', '', text, flags=re.S)
+text = re.sub(r'<[^>]+>', ' ', text)
+text = re.sub(r'\s+', ' ', text).strip()
+print(len(text)); print('Ref No count:', text.count('Ref No'))
+"
+131615
+Ref No count: 562
+
+$ grep -io "captcha\|access denied\|blocked\|cloudflare\|are you human\|rate limit\|just a moment" undp.html | sort -u
+(aucune sortie — aucun signe de blocage anti-bot)
+
+$ grep -oiE '"totalRecords"|loadMore|totalCount' undp.html | sort -u
+(aucune sortie — pas de pagination JS/AJAX détectée)
+```
+**Résultat notable : cette page est intégralement rendue côté serveur, sans pagination — la totalité des ~561 avis actuellement ouverts (562 occurrences de « Ref No », dont 1 est l'en-tête de colonne du filtre) tient sur cette unique URL `index.cfm`.** Cohérent avec la config actuelle de la source (`patterns: {"extract_depth": "advanced", "include_raw_content": true}`, pas de `max_pages`/`page_param` — un seul appel `/extract` suffit structurellement à couvrir tout le listing). Aucun signe de CAPTCHA/anti-bot.
+
+Avis manifestement pertinents pour une entreprise IT, trouvés sur cette page (recoupés contre les mots-clés `it_hardware`/`it_services` de `tenderai-infra/settings.yaml`, lignes 233-294) :
+1. **« 326_IT equipment for National University of Civil Protection of Ukraine »** (`UNDP-UKR-01815`, UKRAINE, RFQ, deadline 16-Sep-26) — matche littéralement `it_hardware` « équipement informatique » (IT equipment).
+2. **« Request for Quotations for IT Equipment for UN-Habitat »** (`UNDP-LAO-00740`, LAO PDR, RFQ, deadline 15-Sep-26) — idem.
+3. **« RfP26/03336 MFA/Cybersecurity Readiness Assessment and Roadmap for Modernization »** (`UNDP-MDA-01077`, MOLDOVA, RFP, deadline 16-Sep-26) — matche `it_services` « cybersécurité »/« sécurité informatique ».
+4. **« Supply of HP Servers to The Central Electoral Commission of RA »** (`UNDP-ARM-01019`, ARMENIA, RFQ, deadline 14-Sep-26) — matche `it_hardware` « serveur ».
+
+**Confirmation de l'entrée propre à cette source dans les logs de nœuds du run CA (`fetch_listings.json`, `_run_id: 1b67631c-4e8b-4650-8212-cf9e3e82c997`) :**
+```
+$ python3 -c "
+import json
+d = json.load(open('fetch_listings.json'))
+e = [x for x in d[0]['data'] if x['source']['id']==17][0]
+print(json.dumps(e, indent=2, ensure_ascii=False))
+"
+{
+  "source": {
+    "id": 17,
+    "name": "UNDP - Procurement Notices",
+    "base_url": "https://procurement-notices.undp.org",
+    "list_url": "https://procurement-notices.undp.org/index.cfm",
+    "parser_type": "tavily_extract",
+    "rate_limit": "10/m",
+    "patterns": {"extract_depth": "advanced", "include_raw_content": true},
+    ...
+  },
+  "content": null,
+  "listings": [],
+  "url": "https://procurement-notices.undp.org/index.cfm",
+  "status": "failed",
+  "error": "TAVILY_API_KEY not set",
+  "fetched_at": "2026-09-02T17:10:51.796708",
+  "parser_type": "tavily_extract"
+}
+```
+Confirmé pour cette source précisément — identique au constat générique de la Tâche 7, pas supposé. Le `list_url` de la config correspond exactement à l'URL de vérité terrain ci-dessus (pas de confusion avec « UNDP Africa », id 22, source distincte et désactivée). `extract_item_links.json` du même run est `{"data": []}` (le graphe s'est arrêté avant même de router par source, cf. avertissement CA en tête de section — aucune source CA n'a produit de lien ce jour-là).
+
+**Requête `notices` (source_id=17, exécutée le 2026-09-02) :**
+```
+$ ssh -i ~/.ssh/id_ed25519 tender-ai@195.35.48.198 \
+  "docker exec staging_postgres psql -U tenderai -d tenderai_bf -c \
+  \"SELECT n.id, n.title, n.ref_no, n.deadline_at, n.is_duplicate, n.duplicate_of_id, cns.is_relevant, cns.relevance_score, cns.classification_method FROM notices n LEFT JOIN company_notice_status cns ON cns.notice_id=n.id AND cns.company_id=1 WHERE n.source_id=17 ORDER BY n.created_at DESC LIMIT 50;\""
+
+ id | title | ref_no | deadline_at | is_duplicate | duplicate_of_id | is_relevant | relevance_score | classification_method
+----+-------+--------+-------------+--------------+-----------------+-------------+-----------------+------------------------
+(0 rows)
+```
+Résultat attendu, non spécifique à cette source (cf. avertissement CA — aucune notice CA en base à ce jour, quelle qu'en soit la cause). Aucune ligne `company_notice_status` : aucun faux positif de classification à vérifier.
+
+**Gaps constatés :**
+
+| Titre | Vu par le pipeline ? | Étage où perdu/faux positif | Cause racine | Étiquette (bug/archi/techno) | Sévérité | Preuve |
+|---|---|---|---|---|---|---|
+| 326_IT equipment for National University of Civil Protection of Ukraine (`UNDP-UKR-01815`) — matche le mot-clé IT « équipement informatique » | Non | Fetch (`fetch_listings`, branche `tavily_extract`) | `TAVILY_API_KEY` absente du conteneur `staging_api` (Tâche 7, reconfirmé ici : `docker exec staging_api env \| grep -i TAVILY` → vide) — pas de code/config spécifique à cette source, la branche échoue avant même l'appel `/extract` | bug logique | Critique | `fetch_listings.json` : `status: failed`, `error: "TAVILY_API_KEY not set"`, `listings: []` ; vérité terrain `curl` : item présent dans le texte brut de `index.cfm`, page intégralement rendue côté serveur |
+| Request for Quotations for IT Equipment for UN-Habitat (`UNDP-LAO-00740`) — matche « équipement informatique » | Non | Fetch (`fetch_listings`, branche `tavily_extract`) | Même cause | bug logique | Critique | Idem |
+| RfP26/03336 MFA/Cybersecurity Readiness Assessment (`UNDP-MDA-01077`) — matche « cybersécurité » | Non | Fetch (`fetch_listings`, branche `tavily_extract`) | Même cause | bug logique | Critique | Idem |
+| Les ~557 autres avis actuellement ouverts (561 au total sur cette unique page, 0 vus par le pipeline) | Non | Fetch (`fetch_listings`, branche `tavily_extract`) | Même cause — perte à 100%, pas un cas isolé | bug logique | Critique | `fetch_listings.json` : `listings: []` pour la totalité de la source ; vérité terrain `curl` : 562 occurrences de « Ref No » (561 avis + 1 en-tête) |
+
+**Verdict :** UNDP est une perte totale à l'étage fetch, cause identique et déjà établie par la Tâche 7 (`TAVILY_API_KEY` absente du conteneur `staging_api`). **Étiquette : bug logique**, pas limite technologique — jugé spécifiquement pour ce site, pas recopié : `index.cfm` est intégralement rendu côté serveur (un simple `curl` sans JS récupère déjà les 561 avis, dates, ref, deadlines), sans pagination ni AJAX à gérer, et sans aucun signe d'anti-bot. C'est le cas le plus simple des trois sources de cette tâche : `tavily_extract` avec `extract_depth: advanced` sur une URL statique unique est structurellement le bon outil pour ce site — la cause du gap est purement une variable d'environnement manquante côté déploiement, sans aucune indication d'un désaccord architectural entre l'outil et le site.
 
 ### The Commonwealth (source id 20, parser_type tavily_extract)
-_(rempli par sa propre tâche)_
+
+**Cause racine — pas re-diagnostiquée ici :** confirmée identique à la Tâche 7 : `TAVILY_API_KEY` absente du conteneur `staging_api` (reconfirmé ici, même commande que ci-dessus : sortie vide). Cette section documente la vérité terrain propre à cette source, la confirmation de son entrée dans les logs, et une investigation approfondie — au-delà de la clé manquante — sur la nature structurelle du site, comme demandé pour ne pas recopier le même raisonnement d'une source à l'autre.
+
+**Vérité terrain, méthode 1 (`curl`, 2026-09-02, `list_url` exact) :**
+```
+$ curl -s -o commonwealth.html -w "HTTP_STATUS:%{http_code} SIZE:%{size_download}\n" \
+  "https://tenders.thecommonwealth.org/aspx/Tenders/Appraisal" \
+  -A "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+HTTP_STATUS:200 SIZE:127810
+
+$ python3 -c "
+import re
+html = open('commonwealth.html', encoding='utf-8', errors='replace').read()
+text = re.sub(r'<script.*?</script>', '', html, flags=re.S)
+text = re.sub(r'<style.*?</style>', '', text, flags=re.S)
+text = re.sub(r'<[^>]+>', ' ', text)
+print(len(re.sub(r'\s+', ' ', text).strip()))
+"
+1578
+```
+Le texte visible statique (1578 caractères) ne contient **aucun avis** — seulement de la navigation générique et, littéralement, l'aveu du site lui-même : *"This page is not functional with Javascript disabled or Javascript not available"*. Inspection du HTML brut confirme un conteneur de listing explicitement vide, rempli plus tard par AJAX :
+```
+$ python3 -c "
+import re
+html = open('commonwealth.html', encoding='utf-8', errors='replace').read()
+m = re.search(r'<div id=\"containerProjects\">.*?</div>\s*<div id=\"divProjects\">', html, re.S)
+print(m.group())
+"
+<div id="containerProjects">
+                    </div>
+                    <div id="divProjects">
+```
+Le JS de la page appelle `LoadProjects(...)` via `onloadCallback` pour peupler ce conteneur. **Un `curl` nu, ou toute extraction qui n'exécute pas le JS de la page, ne verrait donc structurellement aucun avis sur ce site — indépendamment de la présence d'une clé Tavily valide.**
+
+**Vérité terrain, méthode 2 — navigateur réel (Chrome via `claude-in-chrome`, 2026-09-02), pour vérifier ce qu'une extraction consciente du JS verrait réellement :**
+```
+navigate → https://tenders.thecommonwealth.org/aspx/Tenders/Appraisal
+get_page_text (après chargement complet) :
+"Search Search Sort Title Sort Date documents can be requested until
+There are no tenders at the moment
+Please click on the following link to go to the procurement web site...
+Procurement Department Web Site"
+```
+Vérifié aussi sur les deux autres onglets du même portail (URLs sœurs, non configurées comme `list_url` mais utiles pour situer la vérité terrain) :
+```
+/aspx/Tenders/Current     → "There are no Current tenders at the moment"
+/aspx/Tenders/Forthcoming → "There are no Forthcoming tenders at the moment"
+```
+**Vérité terrain factuelle du jour : il n'existe actuellement aucun appel d'offres actif sur ce portail, dans aucun des trois onglets (Appraisal/Current/Forthcoming).** Contrairement à UNDP et Palladium, il n'y a donc, à cette date précise, strictement aucun avis — IT ou autre — que le pipeline aurait manqué sur cette source : le site lui-même est vide.
+
+**Investigation architecture — `tavily_extract` est-il le bon outil pour ce site précis ? (au-delà de la clé manquante, comme demandé)** Le listing de ce portail (technologie In-Tend, SaaS de sourcing utilisé par des organisations publiques/intergouvernementales) est chargé par un appel AJAX au chargement de la page, pas par un rendu serveur classique — un profil structurellement différent d'UNDP/Palladium. La config de cette source utilise déjà `extract_depth: "advanced"`, le mode que Tavily documente explicitement pour « JS-rendered SPAs, dynamic content » (compétence `tavily-extract` installée localement) — donc le choix de configuration existant anticipait déjà ce besoin, et le test navigateur ci-dessus confirme que le contenu réel s'obtient par un simple chargement de page, sans interaction spécifique (comme pour Nova Scotia en section CA). **Cependant, faute d'une clé Tavily valide disponible pour cette tâche** (absente en staging par définition même de la cause racine ; aucune clé locale/personnelle trouvée dans ce repo ou l'environnement pour tester `/extract` en direct ; CLI `tvly` non installée) **, il n'a pas été possible de vérifier positivement que l'appel Tavily `/extract` exécute effectivement cet appel AJAX on-load et renverrait le texte réel plutôt qu'un contenu vide ou une erreur — point documenté honnêtement comme non résolu, pas tranché dans un sens ou l'autre par supposition.** Point structurel distinct et sans ambiguïté, relevé en lisant le JS de la page : une passerelle reCAPTCHA (`#captcha-container`) existe mais ne se déclenche que `if (msg > maxPageRequest && maxPageRequest != -1)`, c.-à-d. uniquement en cas de pagination au-delà d'une certaine profondeur — non pertinent aujourd'hui (0 résultat, jamais de second appel de page) et non activé par la config actuelle de la source (pas de `max_pages`/pagination configurée), mais à surveiller si le site redevient actif avec beaucoup d'avis.
+
+**Confirmation de l'entrée propre à cette source dans les logs de nœuds du run CA :**
+```
+$ python3 -c "
+import json
+d = json.load(open('fetch_listings.json'))
+e = [x for x in d[0]['data'] if x['source']['id']==20][0]
+print('status:', e['status'], '| error:', e['error'], '| listings:', len(e['listings']), '| list_url:', e['source']['list_url'])
+"
+status: failed | error: TAVILY_API_KEY not set | listings: 0 | list_url: https://tenders.thecommonwealth.org/aspx/Tenders/Appraisal
+```
+Confirmé pour cette source précisément (`fetched_at: "2026-09-02T17:10:51.796915"`) — identique au constat générique de la Tâche 7, pas supposé. `list_url` correspond exactement à l'URL de vérité terrain (méthode 1/2 ci-dessus).
+
+**Requête `notices` (source_id=20, exécutée le 2026-09-02) :**
+```
+$ ssh -i ~/.ssh/id_ed25519 tender-ai@195.35.48.198 \
+  "docker exec staging_postgres psql -U tenderai -d tenderai_bf -c \
+  \"SELECT n.id, n.title, n.ref_no, n.deadline_at, n.is_duplicate, n.duplicate_of_id, cns.is_relevant, cns.relevance_score, cns.classification_method FROM notices n LEFT JOIN company_notice_status cns ON cns.notice_id=n.id AND cns.company_id=1 WHERE n.source_id=20 ORDER BY n.created_at DESC LIMIT 50;\""
+
+ id | title | ref_no | deadline_at | is_duplicate | duplicate_of_id | is_relevant | relevance_score | classification_method
+----+-------+--------+-------------+--------------+-----------------+-------------+-----------------+------------------------
+(0 rows)
+```
+Résultat attendu, non spécifique à cette source (cf. avertissement CA). Cohérent aussi avec la vérité terrain propre à cette source : même sans le blocage `TAVILY_API_KEY`, il n'y a aujourd'hui rien à persister (0 avis actifs sur le site). Aucune ligne `company_notice_status` : aucun faux positif de classification à vérifier.
+
+**Gaps constatés :**
+
+| Titre | Vu par le pipeline ? | Étage où perdu/faux positif | Cause racine | Étiquette (bug/archi/techno) | Sévérité | Preuve |
+|---|---|---|---|---|---|---|
+| (Aucun avis actif sur le site à la date de vérité terrain — rien de concret n'est donc perdu aujourd'hui) | N/A | Fetch (`fetch_listings`, branche `tavily_extract`) — bloqué avant même de pouvoir tester si le rendu JS aurait fonctionné | `TAVILY_API_KEY` absente du conteneur `staging_api` (Tâche 7, reconfirmé ici) empêche tout appel `/extract`, quel qu'en aurait été le résultat | bug logique | Modérée (aucun avis actif sur le site à ce jour — impact net nul actuellement — mais le blocage fetch est total et masquerait tout nouvel avis IT dès sa publication) | `fetch_listings.json` : `status: failed`, `error: "TAVILY_API_KEY not set"` ; vérité terrain navigateur réel : « There are no tenders/Current tenders/Forthcoming tenders at the moment » sur les 3 onglets du portail |
+| Incertitude architecturale non résolue : capacité non vérifiée du couple `tavily_extract`/`extract_depth: advanced` à exécuter l'appel AJAX `LoadProjects` de ce site précis, faute de clé Tavily disponible pour un test en direct | Indéterminé | Fetch (`fetch_listings`, branche `tavily_extract`) | Point ouvert, documenté par honnêteté plutôt que tranché par supposition | limite architecturale potentielle (non confirmée — à réévaluer une fois la clé restaurée) | À réévaluer | Code JS de la page : listing chargé par `LoadProjects()` on-load, conteneur `#containerProjects` vide dans le HTML statique ; `extract_depth: advanced` déjà configuré et documenté par Tavily pour ce cas d'usage, mais non testé en direct (pas de clé Tavily disponible localement, CLI `tvly` non installée) |
+
+**Verdict :** Contrairement à UNDP et Palladium, The Commonwealth n'a, à la date de cette vérité terrain (2026-09-02), strictement aucun avis actif sur son portail — les 3 onglets Appraisal/Current/Forthcoming renvoient tous « no tenders »/« no Current tenders »/« no Forthcoming tenders » via un navigateur réel. Il n'y a donc aujourd'hui aucun avis IT concret perdu par le pipeline sur cette source, contrairement aux deux autres sources de cette tâche. La cause immédiate du blocage à l'étage fetch reste identique et déjà établie par la Tâche 7 : `TAVILY_API_KEY` absente du conteneur `staging_api` (reconfirmé indépendamment ici). **Étiquette retenue : bug logique**, mais avec une réserve honnête propre à cette source, pas recopiée des deux autres : le listing de ce portail est chargé par AJAX (`LoadProjects` on-load, conteneur vide en HTML statique) plutôt que rendu côté serveur — un profil structurellement plus proche de Nova Scotia (JS requis) que d'UNDP/Palladium (rendu serveur direct). Le mode `extract_depth: advanced` déjà configuré est documenté par Tavily précisément pour ce cas, ce qui penche pour « bug logique » (config manquante) plutôt que « limite architecturale » — mais faute d'une clé Tavily valide pour tester l'appel `/extract` en direct sur ce site précis, cette hypothèse n'a pas pu être positivement vérifiée et reste un point ouvert à confirmer une fois la clé restaurée, plutôt qu'un fait établi. **Sévérité revue à la baisse par rapport à UNDP/Palladium** : le gap fetch existe bel et bien et reste total, mais son impact concret aujourd'hui est nul (rien de pertinent n'est manqué, faute de tout avis actif sur le site) — à réévaluer dès que le site republie des opportunités.
 
 ### Palladium Group (source id 25, parser_type tavily_extract)
-_(rempli par sa propre tâche)_
+
+**Cause racine — pas re-diagnostiquée ici :** confirmée identique à la Tâche 7 : `TAVILY_API_KEY` absente du conteneur `staging_api` (reconfirmé ici, même vérification que les deux sources précédentes : sortie vide).
+
+**Vérité terrain (`curl`, 2026-09-02, `list_url` exact) :**
+```
+$ curl -s -o palladium.html -w "HTTP_STATUS:%{http_code} SIZE:%{size_download}\n" \
+  "https://thepalladiumgroup.com/tenders" \
+  -A "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+HTTP_STATUS:200 SIZE:35546
+
+$ python3 -c "
+import re
+html = open('palladium.html', encoding='utf-8', errors='replace').read()
+text = re.sub(r'<script.*?</script>', '', html, flags=re.S)
+text = re.sub(r'<style.*?</style>', '', text, flags=re.S)
+text = re.sub(r'<[^>]+>', ' ', text)
+text = re.sub(r'\s+', ' ', text).strip()
+print(len(text)); print('Find out more count:', text.count('Find out more'))
+"
+4057
+Find out more count: 21
+
+$ grep -io "captcha\|access denied\|blocked\|cloudflare\|are you human\|rate limit\|just a moment" palladium.html | sort -u
+(aucune sortie)
+
+$ grep -n -i "next" palladium.html | head -5
+96:          e.src = "//" + __sf_config.host + "/dist/js/frs-next.js";
+```
+**Page intégralement rendue côté serveur, sans pagination** : les 21 avis actuellement listés sous « Current Tenders » (chacun suivi d'un bouton « Find out more ») sont tous présents dans le HTML brut retourné par un simple `curl` ; la seule occurrence de « next » dans le fichier est un nom de script JS (`frs-next.js`) sans rapport avec une pagination de contenu. Cohérent avec la config de la source (pas de `max_pages` défini — un seul appel `/extract` suffit). Aucun signe d'anti-bot.
+
+Avis manifestement pertinents pour une entreprise IT (recoupés contre `it_services`/`it_hardware`) :
+1. **« Enhancing Sri Lanka Tourism Promotion through Integrated Digital Campaign Monitoring, Skills Development and Market Intelligence »** — matche `it_services` « digital »/« numérique ».
+2. **« Palladium RFQ - Strengthening of Warehouse Management Information and Monitoring Systems for the Distribution of Disaster Management Logistics Assistance »** — matche `it_services` « système de gestion » (Management Information...Systems).
+3. **« Palladium RFQ - 400 Tablets and Durable Power Banks Procurement - Palladium Data.FI Botswana »** — recoupe (au sens large) `it_hardware` « matériel informatique » (tablettes).
+
+**Note structurelle distincte, hors cause racine :** contrairement à UNDP, cette page ne montre que des titres + boutons « Find out more » — les champs `reference`/`deadline` ne sont pas visibles sur le listing lui-même (vraisemblablement sur les pages de détail individuelles, non fetchées par `tavily_extract`, qui ne suit que `list_url`). Même avec une clé Tavily valide, `parse_tavily_listing.py` laisserait donc probablement ces champs vides pour cette source — un gap de complétude des champs distinct de la cause racine actuelle (le fetch échoue avant même d'atteindre ce stade), signalé ici pour une phase 2 mais non quantifié davantage (hors périmètre de ce diagnostic).
+
+**Confirmation de l'entrée propre à cette source dans les logs de nœuds du run CA :**
+```
+$ python3 -c "
+import json
+d = json.load(open('fetch_listings.json'))
+e = [x for x in d[0]['data'] if x['source']['id']==25][0]
+print('status:', e['status'], '| error:', e['error'], '| listings:', len(e['listings']), '| list_url:', e['source']['list_url'])
+"
+status: failed | error: TAVILY_API_KEY not set | listings: 0 | list_url: https://thepalladiumgroup.com/tenders
+```
+Confirmé pour cette source précisément (`fetched_at: "2026-09-02T17:10:51.797131"`) — identique au constat générique de la Tâche 7, pas supposé. `extract_item_links.json` du même run est `{"data": []}` (cf. avertissement CA en tête de section).
+
+**Requête `notices` (source_id=25, exécutée le 2026-09-02) :**
+```
+$ ssh -i ~/.ssh/id_ed25519 tender-ai@195.35.48.198 \
+  "docker exec staging_postgres psql -U tenderai -d tenderai_bf -c \
+  \"SELECT n.id, n.title, n.ref_no, n.deadline_at, n.is_duplicate, n.duplicate_of_id, cns.is_relevant, cns.relevance_score, cns.classification_method FROM notices n LEFT JOIN company_notice_status cns ON cns.notice_id=n.id AND cns.company_id=1 WHERE n.source_id=25 ORDER BY n.created_at DESC LIMIT 50;\""
+
+ id | title | ref_no | deadline_at | is_duplicate | duplicate_of_id | is_relevant | relevance_score | classification_method
+----+-------+--------+-------------+--------------+-----------------+-------------+-----------------+------------------------
+(0 rows)
+```
+Résultat attendu, non spécifique à cette source (cf. avertissement CA). Aucune ligne `company_notice_status` : aucun faux positif de classification à vérifier.
+
+**Gaps constatés :**
+
+| Titre | Vu par le pipeline ? | Étage où perdu/faux positif | Cause racine | Étiquette (bug/archi/techno) | Sévérité | Preuve |
+|---|---|---|---|---|---|---|
+| Enhancing Sri Lanka Tourism Promotion through Integrated Digital Campaign Monitoring, Skills Development and Market Intelligence — matche le mot-clé IT « digital » | Non | Fetch (`fetch_listings`, branche `tavily_extract`) | `TAVILY_API_KEY` absente du conteneur `staging_api` (Tâche 7, reconfirmé ici) — pas de code/config spécifique à cette source, la branche échoue avant même l'appel `/extract` | bug logique | Critique | `fetch_listings.json` : `status: failed`, `error: "TAVILY_API_KEY not set"`, `listings: []` ; vérité terrain `curl` : item présent, page rendue intégralement côté serveur |
+| Palladium RFQ - Strengthening of Warehouse Management Information and Monitoring Systems for the Distribution of Disaster Management Logistics Assistance — matche « système de gestion » | Non | Fetch (`fetch_listings`, branche `tavily_extract`) | Même cause | bug logique | Critique | Idem |
+| Les ~18 autres avis actuels (21 au total sur cette unique page, 0 vus par le pipeline) | Non | Fetch (`fetch_listings`, branche `tavily_extract`) | Même cause — perte à 100%, pas un cas isolé | bug logique | Critique | `fetch_listings.json` : `listings: []` pour la totalité de la source ; vérité terrain `curl` : 21 occurrences de « Find out more » |
+
+**Verdict :** Palladium Group est une perte totale à l'étage fetch, cause identique et déjà établie par la Tâche 7 (`TAVILY_API_KEY` absente du conteneur `staging_api`). **Étiquette : bug logique**, pas limite technologique — vérifié spécifiquement pour ce site, pas recopié : la page `/tenders` est intégralement rendue côté serveur (un `curl` nu récupère déjà les 21 avis actuels), sans pagination, sans aucun signe d'anti-bot. Comme pour UNDP (et à la différence de The Commonwealth), aucune indication qu'une architecture différente serait nécessaire pour le listing lui-même — la cause du gap est purement l'absence de la variable d'environnement. **Remarque secondaire, hors cause racine :** même une fois la clé restaurée, les champs `reference`/`deadline` resteraient probablement vides pour cette source, faute d'être présents sur la page de listing elle-même — un gap de complétude des champs distinct, signalé pour une phase 2, non quantifié ici.
 
 ### Sources désactivées (9 sources)
 _(rempli par sa propre tâche)_
