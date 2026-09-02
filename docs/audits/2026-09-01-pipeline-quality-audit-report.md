@@ -586,7 +586,152 @@ Résultat attendu et non spécifique à UEMOA (Finding #1, avertissement en têt
 Sévérité globale de la source : **critique**, portée principalement par la perte de pagination (~185 avis actifs/jour jamais vus, dont des marchés IT identifiés) ; le crash transversal du Finding #1 a ensuite empêché même les 8 avis survivants (dont 2 manifestement pertinents IT) d'atteindre la base de données ce jour précis — un problème indépendant de UEMOA lui-même, déjà documenté et dont la source n'est pas responsable.
 
 ### Enabel (source id 12, parser_type html-tender)
-_(rempli par sa propre tâche — Task 6)_
+
+**Particularité structurelle de cette source :** même fetcher générique piloté par `patterns` que UEMOA (`src/tenderai/agents/nodes/fetch_html_tender.py`, aucun code spécifique à Enabel). Configuration en base pour `source_id=12` (requête exécutée le 2026-09-02) :
+```
+$ ssh -i ~/.ssh/id_ed25519 tender-ai@195.35.48.198 \
+  "docker exec staging_postgres psql -U tenderai -d tenderai_bf -c \
+  \"SELECT id, name, parser_type, list_url, patterns FROM sources WHERE id=12;\""
+
+ id |                 name                  | parser_type |                               list_url                                |                                                                                                                                                           patterns
+----+---------------------------------------+-------------+-----------------------------------------------------------------------+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ 12 | Enabel - Marchés publics Burkina Faso | html-tender | https://www.enabel.be/fr/marches-publics/?in_country=1726&is_status=0 | {"entity": "Enabel", "location": "Burkina Faso", "max_pages": 3, "card_selector": "div.card--news.card--tenders", "pagination_url": "https://www.enabel.be/fr/marches-publics/page/{page}/?in_country=1726&is_status=0", "title_selector": "p.h5 span", "deadline_selector": "p", "deadline_text_prefix": "Date de clôture"}
+(1 row)
+```
+`max_pages: 3` **et** `pagination_url` configurés (contrairement à UEMOA, Tâche 5) — la boucle de pagination générique de `fetch_html_tender.py` (lignes 46-48 : `if max_pages > 1 and pagination_url: for page in range(2, max_pages+1): urls.append(pagination_url.format(page=page))`) se déclenche bel et bien pour Enabel. **Point notable, absent des deux autres sources `html-tender`/pagination-adjacentes déjà auditées (UEMOA, UNGM) :** contrairement à UEMOA (`pdf_selector: "a[href*='opportunite_affaire']"`), les `patterns` d'Enabel **ne définissent aucun `pdf_selector`** — chaque avis Enabel publie pourtant une PDF ("Cahier des charges") distincte par avis dans le HTML lui-même (voir Step 2 ci-dessous), non exploitée par le fetcher faute de sélecteur configuré.
+
+**Vérité terrain — méthode et disclosure de l'écart de date (conforme à la consigne du brief) :** collectée le **2026-09-02, ~16h55 UTC, soit un jour après le run audité (2026-09-01)**. Comme pour UEMOA (Tâche 5), `curl` a été utilisé à la place du navigateur Chrome — justifié de la même façon : `html-tender` est un fetcher server-rendered (pas de JS requis, pagination `?page=N`-style ou `/page/N/`-style classique), donc `curl` est équivalent au rendu réel de la page. Pour compenser l'écart d'un jour, un **cross-check empirique titre-par-titre et deadline-par-deadline** entre le listing live du 2026-09-02 et le `fetch_listings.json` du 2026-09-01 a été effectué (voir "Résultat du pipeline" ci-dessous) — les 3 titres et les 3 deadlines sont identiques à la lettre près, confirmant l'absence de dérive de contenu entre les deux dates.
+
+Page racine (`list_url`, `?in_country=1726&is_status=0`) et pagination jusqu'à la page 5 (au-delà des `max_pages: 3` configurés, pour vérifier explicitement l'absence d'une page 4+ contenant plus d'avis) :
+```
+$ for p in "" "page/2/" "page/3/" "page/4/" "page/5/"; do
+  url="https://www.enabel.be/fr/marches-publics/${p}?in_country=1726&is_status=0"
+  curl -s -o <fichier> -w "url=$url HTTP_STATUS:%{http_code} SIZE:%{size_download}\n" \
+    "$url" -A "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+done
+url=https://www.enabel.be/fr/marches-publics/?in_country=1726&is_status=0 HTTP_STATUS:200 SIZE:124717
+url=https://www.enabel.be/fr/marches-publics/page/2/?in_country=1726&is_status=0 HTTP_STATUS:200 SIZE:120162
+url=https://www.enabel.be/fr/marches-publics/page/3/?in_country=1726&is_status=0 HTTP_STATUS:200 SIZE:120160
+url=https://www.enabel.be/fr/marches-publics/page/4/?in_country=1726&is_status=0 HTTP_STATUS:200 SIZE:120161
+url=https://www.enabel.be/fr/marches-publics/page/5/?in_country=1726&is_status=0 HTTP_STATUS:200 SIZE:120159
+```
+Comptage indépendant des cartes tender (`div.card--news.card--tenders`, sélecteur exact utilisé par le pipeline) sur chaque page téléchargée :
+```
+$ for f in p0.html page_2_.html page_3_.html page_4_.html page_5_.html; do
+  echo -n "$f: "; grep -o 'card--news card--tenders' "$f" | wc -l
+done
+p0.html: 3
+page_2_.html: 0
+page_3_.html: 0
+page_4_.html: 0
+page_5_.html: 0
+```
+**Aucune trace de pagination active dans le HTML de la page 0** (`grep -o 'page/[0-9]*/' p0.html` ne renvoie aucun lien de pagination), aucun message « aucun résultat »/erreur distinguable sur les pages 2-5 (même gabarit HTML exact que la page 0, seule la classe `paged-N`/`page-paged-N` du `<body>` change, confirmé par `diff` entre pages consécutives — pas une page d'erreur ou de blocage). **Conclusion vérité terrain : le site ne compte actuellement que 3 avis actifs au total pour ce filtre pays, tous sur la page 0 ; aucune page 4+ (ni même page 2/3) avec des avis supplémentaires n'existe.** `max_pages: 3` est donc une valeur généreuse mais **non fautive** ici — à la différence de UEMOA (`max_pages: 1` face à 194 avis réels sur 20 pages), Enabel n'a structurellement pas de pagination manquante : le nombre de pages réellement configurées (3) couvre très largement le nombre de pages réellement nécessaires (1).
+
+Les 3 avis vérité terrain (titres et deadlines extraits indépendamment du HTML brut de `p0.html`, sélecteurs `p.h5 span` / `Date de clôture :`) :
+```
+$ python3 -c "
+import re
+html = open('p0.html', encoding='utf-8').read()
+for m in re.finditer(r'<p class=\"h5\"[^>]*>\s*<span[^>]*>(.*?)</span>', html, re.S):
+    print(repr(m.group(1)))
+"
+'\n  BFA23004-10084 &#8211;\n  Acquisition de matériel spécifique pour apprenants handicapés\n  '
+'\n  BFA22002-10159 &#8211;\n  Acquisition et installation d&rsquo;équipements d'intrant au profit des entreprises agroalimentaires\n  '
+'\n  BFA23002-10044 &#8211;\n  Fourniture, livraison et installation d'équipements médico-techniques pour les districts sanitaires de Boromo et de Houndé\n  '
+
+$ python3 -c "
+import re
+html = open('p0.html', encoding='utf-8').read()
+for m in re.finditer(r'.{20}Date de cl.ture.{150}', html, re.S): print(repr(m.group(0)))
+"
+'...Date de clôture : </strong> 14 September 2026 12:00 </p>...'
+'...Date de clôture : </strong> 07 September 2026 12:00 </p>...'
+'...Date de clôture : </strong> 08 September 2026 12:00 </p>...'
+```
+1. BFA23004-10084 – Acquisition de matériel spécifique pour apprenants handicapés (deadline 14/09/2026) — équipement pédagogique adapté, **aucun mot-clé IT/mots-clés de classification** (Contraintes globales) ne matche.
+2. BFA22002-10159 – Acquisition et installation d'équipements d'intrant au profit des entreprises agroalimentaires (deadline 07/09/2026) — équipement agro-industriel, **aucun mot-clé IT ne matche**.
+3. BFA23002-10044 – Fourniture, livraison et installation d'équipements médico-techniques pour les districts sanitaires de Boromo et de Houndé (deadline 08/09/2026) — équipement médico-technique, **aucun mot-clé IT ne matche** (« équipement » seul n'est pas dans la liste ; la liste exige des termes composés comme « équipement informatique »/« matériel informatique »).
+
+Chaque carte contient par ailleurs un lien PDF « Cahier des charges » propre et distinct par avis (vérifié dans le HTML brut) :
+```
+$ python3 -c "
+import re
+html = open('p0.html', encoding='utf-8').read()
+cards = re.split(r'card--news card--tenders', html)[1:]
+for i, c in enumerate(cards):
+    print(f'card {i}:', re.findall(r'href=\"([^\"]+\\.pdf)\"', c[:3000])[:1])
+"
+card 0: ['https://www.enabel.be/app/uploads/2026/08/BFA23004-10084_Cahier-des-charges-2.pdf']
+card 1: ['https://www.enabel.be/app/uploads/2026/08/BFA-22002-10159_Cahier-des-charges.pdf']
+card 2: ['https://www.enabel.be/app/uploads/2026/08/BFA23002-10044_Cahier_Charges-1-1.pdf']
+```
+— information exploitée plus bas (Step 2) pour identifier la cause exacte de la perte à l'étage `extract_item_links`.
+
+**Résultat du pipeline (run `785adda4-f28c-4f3c-af0a-74b7e775d0b5`, fetch à 2026-09-01 21:20:49 UTC) :**
+
+- `fetch_listings.json` (`grep -i "enabel" -A5 fetch_listings.json`) : `status: "success"`, `error: null`, `patterns` en sortie **identiques** à la config DB ci-dessus (mêmes clés, y compris l'absence de `pdf_selector`). **3 listings au total** — **correspondance exacte, titre pour titre et deadline pour deadline, avec la vérité terrain du 2026-09-02 ci-dessus** (`BFA23004-10084` / `14 September 2026 12:00`, `BFA22002-10159` / `07 September 2026 12:00`, `BFA23002-10044` / `08 September 2026 12:00`) — confirme empiriquement l'absence de dérive de contenu malgré l'écart d'un jour entre le run audité et la collecte de vérité terrain :
+```
+$ python3 -c "
+import json
+d = json.load(open('fetch_listings.json'))
+entry = [e for e in d[0]['data'] if e.get('url','').startswith('https://www.enabel.be')][0]
+print('status:', entry['status'], '| listings:', len(entry['listings']))
+for l in entry['listings']: print(' -', l['title'], '|', l['deadline'])
+"
+status: success | listings: 3
+ - BFA23004-10084 – Acquisition de matériel spécifique pour apprenants handicapés | 14 September 2026 12:00
+ - BFA22002-10159 – Acquisition et installation d'équipements d'intrant au profit des entreprises agroalimentaires | 07 September 2026 12:00
+ - BFA23002-10044 – Fourniture, livraison et installation d'équipements médico-techniques pour les districts sanitaires de Boromo et de Houndé | 08 September 2026 12:00
+```
+Chaque item porte `"url": "https://www.enabel.be/fr/marches-publics/?in_country=1726&is_status=0"` (l'URL de la page de listing elle-même, identique pour les 3) : `_extract_cards()` (`fetch_html_tender.py` lignes 131-138) n'affecte `item_url = page_url` que par défaut, faute de `pdf_sel` configuré pour cette source — les 3 liens PDF distincts par avis (vérifiés ci-dessus dans le HTML brut) existent bien mais ne sont jamais extraits, faute de `pdf_selector` dans `patterns`. **Les 3 pages configurées (`max_pages: 3`) ont bien été sollicitées par le code** (la boucle `urls = [list_url, page/2, page/3]` se déclenche puisque `pagination_url` est présent) ; le fait que le total de `listings` (3) corresponde exactement au nombre de cartes trouvées sur la seule page 0 de la vérité terrain (les pages 2/3 étant vérifiées vides ci-dessus, à un jour d'écart) est cohérent avec des pages 2/3 déjà vides le 2026-09-01 également — **nuance méthodologique honnête :** le nœud n'enregistre qu'un total agrégé par source (pas de détail par page), et les échecs de fetch par page sont capturés uniquement par `logger.warning()` (ligne 63-69 du fetcher), jamais renvoyés dans le JSON de sortie ni conservés (`docker logs` de ce run non disponibles, même limite que documentée section DGCMEF) — il n'est donc pas possible de prouver à 100% que les pages 2/3 ont réussi plutôt qu'échoué silencieusement le 09-01 ; cependant, la correspondance exacte du compte et du contenu avec la vérité terrain du lendemain (où les pages 2-5 sont confirmées vides, pas en erreur) rend cette hypothèse largement la plus probable. **Aucun signe de page 4+ avec des avis supplémentaires — le fetch n'est pas en cause pour cette source, contrairement à UEMOA/UNGM.**
+- `extract_item_links.json` : **1/3 seulement** survit :
+```
+$ python3 -c "
+import json
+d = json.load(open('extract_item_links.json'))
+data = d[0]['data']
+for i in data:
+    if 'enabel' in str(i.get('source','')).lower():
+        print(i.get('title'), '|', i.get('url'))
+"
+BFA23004-10084 – Acquisition de matériel spécifique pour apprenants handicapés | https://www.enabel.be/fr/marches-publics/?in_country=1726&is_status=0
+```
+**Cause racine identifiée avec certitude dans le code (`extract_item_links.py`) :** pour `parser_type in ("html-tender", "crawl4ai")` (lignes 533-541), la clé de déduplication est `url = link.get("url") or link.get("link", "")`, insérée dans un unique set `seen_urls` **partagé entre toutes les sources du run** — or les 3 items Enabel partagent tous exactement la même `url` (celle de la page de listing, voir ci-dessus, faute de `pdf_selector`). Le premier item rencontré (`BFA23004-10084`) passe le test `key not in seen_urls` ; les deux suivants (`BFA22002-10159`, `BFA23002-10044`), avec la **même** clé, sont silencieusement rejetés comme « doublons » alors qu'il s'agit de 3 avis réels et distincts (références, titres, deadlines tous différents). C'est un artefact de collision d'URL introduit par l'absence de configuration `pdf_selector`, pas une déduplication légitime.
+- `fetch_items.json` : le survivant unique (`BFA23004-10084`) passe intact, `status: "success"`.
+- `parse_extract.json` (27 items au total toutes sources BF confondues) : **1/1** Enabel survit (`Counter({'ungm': 15, "UEMOA - Appels d'offres": 10, 'Enabel - Marchés publics Burkina Faso': 1, 'joffres.net': 1})`, cf. sections UNGM/UEMOA) — aucune perte supplémentaire à cet étage, cohérent avec le fait qu'il ne restait déjà plus qu'un seul item Enabel en entrée.
+- `deduplicate.json` (24 items uniques au total) : **1/1** — le survivant passe `is_duplicate: false` (`Counter({'ungm': 14, "UEMOA - Appels d'offres": 8, 'Enabel - Marchés publics Burkina Faso': 1, 'joffres.net': 1})`), non fusionné à tort avec un autre avis.
+- `persist_notices.json` : `{}` (vide) — run entier en échec avant tout commit (Finding #1, avertissement en tête de section BF). Répartition du batch de 24 items (Finding #1) : **Enabel a contribué 1 des 24 items** (`BFA23004-10084`), le seul survivant à avoir atteint `persist_notices`.
+- `notices` (DB, `source_id=12`) : **0 ligne** (requête Step 3 exécutée le 2026-09-02). Requête et sortie brute :
+```
+$ ssh -i ~/.ssh/id_ed25519 tender-ai@195.35.48.198 \
+  "docker exec staging_postgres psql -U tenderai -d tenderai_bf -c \
+  \"SELECT n.id, n.title, n.ref_no, n.deadline_at, n.is_duplicate, n.duplicate_of_id, cns.is_relevant, cns.relevance_score, cns.classification_method FROM notices n LEFT JOIN company_notice_status cns ON cns.notice_id=n.id AND cns.company_id=1 WHERE n.source_id=12 ORDER BY n.created_at DESC LIMIT 50;\""
+
+ id | title | ref_no | deadline_at | is_duplicate | duplicate_of_id | is_relevant | relevance_score | classification_method
+----+-------+--------+-------------+--------------+-----------------+-------------+-----------------+------------------------
+(0 rows)
+```
+Résultat attendu et non spécifique à Enabel (Finding #1, avertissement en tête de section BF) : le seul survivant Enabel a été englouti, comme les items Joffres.net/UEMOA/UNGM, par le `DatetimeFieldOverflow` transversal provoqué par une notice UNGM distincte dans la même transaction tout-ou-rien. Aucune ligne `company_notice_status` n'existe (livraison jamais déclenchée) : aucun faux positif de classification ne peut être vérifié pour cette source sur ce run — de toute façon, aucun des 3 avis Enabel ne matche un mot-clé de la liste de classification (voir ci-dessus), donc aucun candidat plausible à un faux positif n'existe pour cette source.
+
+**Gaps constatés :**
+
+| Titre | Vu par le pipeline ? | Étage où perdu/faux positif | Cause racine | Étiquette (bug/archi/techno) | Sévérité | Preuve |
+|---|---|---|---|---|---|---|
+| BFA22002-10159 – Acquisition et installation d'équipements d'intrant au profit des entreprises agroalimentaires | Oui, jusqu'à `fetch_listings` inclus (1 des 3 listings) ; perdu à `extract_item_links` | Fetch/liens (`extract_item_links`, branche `html-tender`) | Absence de `pdf_selector` dans les `patterns` Enabel (DB) → `fetch_html_tender.py::_extract_cards()` assigne la même `url` (celle de la page de listing) aux 3 cartes → `extract_item_links.py` (lignes 533-541) déduplique par `url` dans un set global `seen_urls` partagé entre sources → seul le 1er item rencontré (`BFA23004-10084`) survit, celui-ci est éliminé à tort comme "doublon" alors qu'il s'agit d'un avis distinct (lien PDF propre, `BFA-22002-10159_Cahier-des-charges.pdf`, vérifié présent dans le HTML mais jamais extrait) | bug logique | Critique | `fetch_listings.json` : 3 listings, tous `"url"` identiques ; `extract_item_links.json` : 1/3 survivants ; `extract_item_links.py` lignes 533-541 (clé de dedup = `url`) ; HTML brut vérité terrain (`p0.html`) : lien PDF distinct confirmé par carte |
+| BFA23002-10044 – Fourniture, livraison et installation d'équipements médico-techniques pour les districts sanitaires de Boromo et de Houndé | Oui, jusqu'à `fetch_listings` inclus (1 des 3 listings) ; perdu à `extract_item_links` | Fetch/liens (`extract_item_links`, branche `html-tender`) | Même cause racine que ci-dessus — 3ᵉ carte, même collision d'URL, éliminée pour la même raison (lien PDF propre `BFA23002-10044_Cahier_Charges-1-1.pdf` vérifié présent mais jamais extrait) | bug logique | Critique | Idem — `extract_item_links.json` : 1/3 survivants ; HTML brut vérité terrain : lien PDF distinct confirmé |
+| BFA23004-10084 – Acquisition de matériel spécifique pour apprenants handicapés (seul survivant Enabel à atteindre `deduplicate`/`persist_notices`) | Oui, jusqu'à `deduplicate` inclus (`is_duplicate: false`, 1/1 survivant) | Persist (`persist_notices`) | Non spécifique à Enabel : transaction unique tout-ou-rien du run BF entier (`persist_notices.py`, un seul `db.commit()` après la boucle) qui échoue à cause d'une notice **UNGM** distincte (`LRFP-2026-9205898`) — voir Finding #1 | bug logique | Critique | `deduplicate.json` : 1 item `source: "Enabel - Marchés publics Burkina Faso"`, `is_duplicate: false` ; Finding #1 (batch INSERT de 24 lignes dont 1 Enabel) ; requête SQL Step 3 (`source_id=12`) → 0 lignes |
+
+Aucun cas de faux positif de classification à documenter pour cette source : aucune ligne `company_notice_status` n'existe (livraison jamais déclenchée), et aucun des 3 avis Enabel de ce run ne matche de toute façon un mot-clé de la liste de classification configurée (Contraintes globales) — pas de candidat plausible à vérifier.
+
+**Verdict :** Enabel cumule deux défauts indépendants, tous deux corrigibles par un changement de configuration/code localisé (aucune limite architecturale ni technologique) :
+
+1. **Fetch → liens — perte majoritaire par collision d'URL, pas par pagination manquante** (défaut le plus sévère en proportion — 2 des 3 avis actifs, soit ~67 %, perdus chaque run de façon parfaitement reproductible) : à la différence de UEMOA (Tâche 5, `max_pages: 1` sans `pagination_url`) et de UNGM (Tâche 4, `PageIndex` câblé en dur), **la pagination d'Enabel n'est pas en cause** — `max_pages: 3` + `pagination_url` sont correctement configurés, le code boucle bien sur les 3 pages, et la vérité terrain confirme qu'il n'existe aujourd'hui que 3 avis actifs au total, tous sur la page 0 (pages 2 à 5 vérifiées vides, aucune page 4+ avec plus d'avis). Le vrai défaut est en aval, à l'étage `extract_item_links` : l'absence de `pdf_selector` dans les `patterns` Enabel fait que les 3 cartes de la page 0 partagent toutes la même `url` (celle de la page de listing), et la déduplication par `url` de `extract_item_links.py` (set global `seen_urls`, lignes 533-541) élimine à tort 2 des 3 avis comme "doublons". Corrigible de deux façons locales et indépendantes, sans refonte : (a) ajouter `"pdf_selector": "a[href$='.pdf']"` (ou plus spécifique) aux `patterns` Enabel en DB — pur changement de configuration, chaque carte porterait alors son propre lien PDF distinct comme `url` ; ou (b) durcir la clé de dedup de la branche `html-tender`/`crawl4ai` dans `extract_item_links.py` pour retomber sur un identifiant combiné (titre+index) quand plusieurs items d'une même source partagent une `url` identique. Aucune des deux options ne touche à l'architecture ni à la techno du fetcher.
+2. **Persist — contribution passive au crash transversal du Finding #1** : le seul avis Enabel ayant survécu jusqu'à `deduplicate` (`BFA23004-10084`) a été englouti, comme pour toutes les autres sources BF de ce run, par la transaction `persist_notices` unique et tout-ou-rien cassée par une notice UNGM distincte — aucune particularité à Enabel dans ce mécanisme, déjà documenté au Finding #1 et dans les sections Joffres.net/UEMOA/UNGM.
+
+Nuance importante sur l'impact métier réel aujourd'hui : **aucun des 3 avis Enabel de ce run — ni les 2 perdus à `extract_item_links`, ni le survivant — ne matche un mot-clé de la liste de classification IT configurée** (Contraintes globales : équipement pédagogique pour apprenants handicapés, équipement agro-industriel, équipement médico-technique — aucun terme composé du type « matériel informatique »/« équipement informatique » ne s'applique). Le bug de collision d'URL est réel, systématique et sévère en proportion (67 % de perte, 100 % reproductible), mais son impact concret pour une entreprise cliente IT est nul sur les avis vus ce jour précis — à la différence de UEMOA où au moins 2 avis manifestement pertinents IT étaient concernés par la perte de pagination.
+
+Sévérité globale de la source : **critique** pour le mécanisme du bug (perte systématique et déterministe de 67 % des avis à chaque run, cause root parfaitement identifiée), **mais impact métier nul à date** faute d'avis IT-pertinent parmi les 3 avis actuellement publiés par cette source — combinée à la perte du seul survivant par le crash transversal déjà documenté (Finding #1), Enabel n'a contribué aucune notice à la base aujourd'hui, comme toutes les autres sources BF de ce run.
 
 ## Canada
 
