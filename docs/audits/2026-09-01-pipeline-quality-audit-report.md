@@ -744,16 +744,205 @@ Sévérité globale de la source : **critique** pour le mécanisme du bug (perte
 **Vérification indépendante — table `notices`, sources CA :** `SELECT n.source_id, s.name, count(*), max(n.created_at) FROM notices n JOIN sources s ON s.id=n.source_id WHERE s.country_id=(SELECT id FROM countries WHERE code='CA') GROUP BY n.source_id, s.name;` → **0 rows** (aucune source CA, 13 à 25). Ce n'est donc pas seulement que ce run n'a rien persisté : il n'existe **aucune** notice CA en base à ce jour, quelle qu'en soit la cause — ni vérité terrain fraîche ni ancienne pour aucune source CA. Pour référence (hors périmètre du déclenchement de cette tâche, à noter pour la synthèse) : le run planifié du jour même à 07:00 UTC (`3ebf19d1-dd63-49b6-8789-711db2bbbade`, `harvest`, `completed_with_warnings`) a produit `unique_items: 97` mais `notices_persisted: 0` — une anomalie qui rappelle le Finding #2 BF (`unique_items` non nul mais rien en base), non investiguée ici.
 
 ### Achats Canada (source id 13, parser_type playwright)
-_(rempli par sa propre tâche)_
+
+**Cause racine — pas re-diagnostiquée ici :** confirmée identique à la Tâche 7 (voir avertissement CA ci-dessus) : `playwright` n'est pas installé comme module Python sur le conteneur `staging_api` (`ModuleNotFoundError: No module named 'playwright'`, reproduit indépendamment par la Tâche 7 via `docker exec staging_api python -c 'import playwright'`). Cette section documente uniquement la vérité terrain propre à cette source, la confirmation de son entrée dans les logs de nœuds du run CA, et le jugement d'étiquette propre à cette source.
+
+**Vérité terrain (`curl`, 2026-09-02 ~17:15 UTC, `list_url` exact copié verbatim depuis la config DB/`fetch_listings.json`) :**
+```
+$ curl -s -o achatscanada.html -w "HTTP_STATUS:%{http_code} SIZE:%{size_download}\n" \
+  "https://achatscanada.canada.ca/fr/occasions-de-marche?search_filter=&status%5B87%5D=87&category%5B154%5D=154&Appliquer_les_filtres=Appliquer+les+filtres&record_per_page=100&current_tab=t&words=" \
+  -A "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+HTTP_STATUS:200 SIZE:439493
+
+$ grep -o 'href="/fr/occasions-de-marche/appels-d-offres/[^"]*"' achatscanada.html | sort -u | wc -l
+100
+
+$ grep -oE '[0-9]+ résultats' achatscanada.html | head -1
+964 résultats
+
+$ grep -io "captcha\|access denied\|blocked\|cloudflare\|are you human\|rate limit\|just a moment" achatscanada.html | sort -u
+(aucune sortie — aucun signe de blocage anti-bot)
+
+$ grep -o 'rel="next"' achatscanada.html | head -1
+rel="next"
+```
+**Résultat notable : cette page est intégralement rendue côté serveur.** Un simple `curl` sans exécution JS renvoie déjà 964 résultats au total pour ce filtre (`category=154`, `status=87`), avec 100 liens `/appels-d-offres/...` distincts sur la page 1 — exactement le sélecteur configuré (`item_link_selector: a[href*="/appels-d-offres/"]`) et exactement `record_per_page=100` tel que paramétré dans le `list_url`. Un lien `rel="next"` de pagination est présent (`pagination_selector: a[rel="next"]` configuré, cohérent). Aucun signe de CAPTCHA, Cloudflare, ou blocage n'a été détecté.
+
+Deux avis manifestement pertinents pour une entreprise IT, trouvés sur cette seule page 1 (sur les 964 résultats) et vérifiés contre les mots-clés `it_hardware`/`it_services` de `tenderai-infra/settings.yaml` (lignes 233-311) :
+1. **« Système de répartition assistée par ordinateur »** (`cb-250-52228085`) — matche littéralement le mot-clé `it_hardware` « ordinateur ».
+2. **« Licences de système informatisé de gestion de l'entretien (SIGE) »** (`cb-39-8749228`) — licence logicielle de gestion, recoupe le mot-clé `it_services` « système de gestion ».
+
+**Confirmation de l'entrée propre à cette source dans les logs de nœuds du run CA (`ca-nodes/nodes/fetch_listings.json`, `_run_id: 1b67631c-4e8b-4650-8212-cf9e3e82c997`) :**
+```
+$ python3 -c "
+import json
+d = json.load(open('fetch_listings.json'))
+e = [x for x in d[0]['data'] if x['source']['id']==13][0]
+print('status:', e['status'], '| error:', e['error'], '| listings:', len(e['listings']))
+"
+status: failed | error: playwright not installed | listings: 0
+```
+Identique à l'erreur générique documentée par la Tâche 7 — confirmé pour cette source précisément, pas supposé. `extract_item_links.json` de ce même run est `{"data": []}` (le nœud s'est arrêté avant même de router par source, cf. avertissement CA en tête de section).
+
+**Requête `notices` (source_id=13, exécutée le 2026-09-02) :**
+```
+$ ssh -i ~/.ssh/id_ed25519 tender-ai@195.35.48.198 \
+  "docker exec staging_postgres psql -U tenderai -d tenderai_bf -c \
+  \"SELECT n.id, n.title, n.ref_no, n.deadline_at, n.is_duplicate, n.duplicate_of_id, cns.is_relevant, cns.relevance_score, cns.classification_method FROM notices n LEFT JOIN company_notice_status cns ON cns.notice_id=n.id AND cns.company_id=1 WHERE n.source_id=13 ORDER BY n.created_at DESC LIMIT 50;\""
+
+ id | title | ref_no | deadline_at | is_duplicate | duplicate_of_id | is_relevant | relevance_score | classification_method
+----+-------+--------+-------------+--------------+-----------------+-------------+-----------------+------------------------
+(0 rows)
+```
+Résultat attendu, non spécifique à cette source (aucune notice CA en base, quelle qu'en soit la cause — cf. avertissement CA). Aucune ligne `company_notice_status` : aucun faux positif de classification à vérifier.
+
+**Gaps constatés :**
+
+| Titre | Vu par le pipeline ? | Étage où perdu/faux positif | Cause racine | Étiquette (bug/archi/techno) | Sévérité | Preuve |
+|---|---|---|---|---|---|---|
+| Système de répartition assistée par ordinateur (`cb-250-52228085`) — matche le mot-clé IT « ordinateur » | Non | Fetch (`fetch_listings`, branche `playwright`) | `playwright` absent du conteneur `staging_api` (Tâche 7, `ModuleNotFoundError` reproduit indépendamment) — pas de code/config spécifique à cette source, la branche échoue avant même de tenter le rendu | bug logique | Critique | `fetch_listings.json` (`_run_id: 1b67631c-...`) : `status: failed`, `error: "playwright not installed"`, `listings: []` ; vérité terrain `curl` : item présent, 100/100 liens extraits par un simple GET sans JS |
+| Licences de système informatisé de gestion de l'entretien SIGE (`cb-39-8749228`) — recoupe le mot-clé IT « système de gestion » | Non | Fetch (`fetch_listings`, branche `playwright`) | Même cause | bug logique | Critique | Idem |
+| Les ~962 autres résultats du listing (964 au total pour ce filtre, 100 vus par `curl` sur la page 1 seule, 0 vus par le pipeline) | Non | Fetch (`fetch_listings`, branche `playwright`) | Même cause — perte à 100%, pas un cas isolé | bug logique | Critique | `fetch_listings.json` : `listings: []` pour la totalité de la source ; vérité terrain `curl` : « 964 résultats » |
+
+**Verdict :** Achats Canada est une perte totale à l'étage fetch, cause identique et déjà établie par la Tâche 7 (`playwright` absent du conteneur `staging_api`) — pas de particularité de code ou de config propre à cette source. **Étiquette : bug logique**, pas limite technologique — jugement fait au cas par cas comme demandé, pas recopié : la vérité terrain montre que cette page est en réalité **intégralement rendue côté serveur** (un `curl` nu, sans navigateur ni JS, récupère les 100 liens attendus par le sélecteur configuré et le compte de résultats), et **aucun signe d'anti-bot** (pas de CAPTCHA, pas de Cloudflare, pas de blocage) n'a été observé. Le choix architectural `parser_type: playwright` pour cette source n'est donc même pas structurellement nécessaire du point de vue anti-bot — la cause du gap est purement une dépendance manquante dans l'image déployée, triviale à corriger (ajout de `playwright` aux dépendances/à l'image Docker), sans aucune indication que l'approche « navigateur réel dans le conteneur » soit elle-même la mauvaise direction technique pour ce site précis.
 
 ### Ville de Montréal (source id 14, parser_type playwright)
-_(rempli par sa propre tâche)_
+
+**Cause racine — pas re-diagnostiquée ici :** identique à Achats Canada ci-dessus et à la Tâche 7 : `playwright` absent du conteneur `staging_api`.
+
+**Vérité terrain (`curl`, 2026-09-02 ~17:16 UTC, `list_url` exact copié verbatim) :**
+```
+$ curl -s -o montreal.html -w "HTTP_STATUS:%{http_code} SIZE:%{size_download}\n" \
+  "https://montreal.ca/avis-dappel-doffres?types=Appel+d%27offres&categories=Services+professionnels" \
+  -A "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+HTTP_STATUS:200 SIZE:99640
+
+$ grep -o 'href="/avis-dappels-doffres/[^"]*"' montreal.html | sort -u | wc -l
+10
+
+$ grep -oE '[0-9]+ résultats' montreal.html | head -1
+927 résultats
+
+$ grep -io "captcha\|access denied\|blocked\|cloudflare\|are you human\|rate limit\|just a moment" montreal.html | sort -u
+captcha
+```
+La seule occurrence de « captcha » est une balise `<script src="https://www.google.com/recaptcha/api.js?hl=fr" async defer">` chargée en bibliothèque générique par le framework du site (probablement pour un formulaire de contact/connexion ailleurs sur le site) — vérifié par inspection du contexte brut (`re.finditer` sur le HTML) : **ce n'est pas un challenge actif sur cette page de listing**, aucun défi CAPTCHA n'est présenté, `HTTP_STATUS:200` propre, contenu complet. La page est **rendue côté serveur** : `curl` seul (sans JS) récupère déjà les 10 liens attendus par `item_link_selector: a[href*="/avis-dappels-doffres/"]` et le compte de résultats affiché (« 1 à 10 sur 927 résultats »), ainsi que les liens de pagination `?page=2` à `?page=93`.
+
+Avis manifestement pertinent pour une entreprise IT, trouvé sur cette page 1 (recoupé contre les mots-clés `it_services` de `tenderai-infra/settings.yaml`) :
+- **« Acquisition et déploiement d'une plateforme de protection des applications infonuagiques natives (CNAPP) »** (`/avis-dappels-doffres/acquisition-et-deploiement-dune-plateforme-de-protection-des-applications-infonuagiques-natives-119454`) — matche littéralement les mots-clés `it_services` « plateforme » et « application » (protection d'applications cloud-native = cybersécurité infonuagique). Porte un badge « Avis reporté » sur le listing au moment de la capture, mais reste visible et listé — donc un avis réel que le pipeline n'a de toute façon jamais atteint.
+
+**Confirmation de l'entrée propre à cette source dans les logs de nœuds du run CA :**
+```
+$ python3 -c "
+import json
+d = json.load(open('fetch_listings.json'))
+e = [x for x in d[0]['data'] if x['source']['id']==14][0]
+print('status:', e['status'], '| error:', e['error'], '| listings:', len(e['listings']))
+"
+status: failed | error: playwright not installed | listings: 0
+```
+Identique à Achats Canada et à l'erreur générique de la Tâche 7 — confirmé pour cette source précisément.
+
+**Requête `notices` (source_id=14, exécutée le 2026-09-02) :**
+```
+$ ssh -i ~/.ssh/id_ed25519 tender-ai@195.35.48.198 \
+  "docker exec staging_postgres psql -U tenderai -d tenderai_bf -c \
+  \"SELECT n.id, n.title, n.ref_no, n.deadline_at, n.is_duplicate, n.duplicate_of_id, cns.is_relevant, cns.relevance_score, cns.classification_method FROM notices n LEFT JOIN company_notice_status cns ON cns.notice_id=n.id AND cns.company_id=1 WHERE n.source_id=14 ORDER BY n.created_at DESC LIMIT 50;\""
+
+ id | title | ref_no | deadline_at | is_duplicate | duplicate_of_id | is_relevant | relevance_score | classification_method
+----+-------+--------+-------------+--------------+-----------------+-------------+-----------------+------------------------
+(0 rows)
+```
+Résultat attendu, non spécifique à cette source (cf. avertissement CA). Aucune ligne `company_notice_status` : aucun faux positif de classification à vérifier.
+
+**Gaps constatés :**
+
+| Titre | Vu par le pipeline ? | Étage où perdu/faux positif | Cause racine | Étiquette (bug/archi/techno) | Sévérité | Preuve |
+|---|---|---|---|---|---|---|
+| Acquisition et déploiement d'une plateforme de protection des applications infonuagiques natives (CNAPP) — matche les mots-clés IT « plateforme »/« application » | Non | Fetch (`fetch_listings`, branche `playwright`) | `playwright` absent du conteneur `staging_api` (Tâche 7) — pas de code/config spécifique à cette source | bug logique | Critique | `fetch_listings.json` : `status: failed`, `error: "playwright not installed"`, `listings: []` ; vérité terrain `curl` : item présent, 10/10 liens de la page 1 extraits par un simple GET sans JS |
+| Les ~917 autres résultats du listing (927 au total pour ce filtre, 10 vus par `curl` sur la page 1 seule, 0 vus par le pipeline) | Non | Fetch (`fetch_listings`, branche `playwright`) | Même cause — perte à 100%, pas un cas isolé | bug logique | Critique | `fetch_listings.json` : `listings: []` pour la totalité de la source ; vérité terrain `curl` : « 1 à 10 sur 927 résultats » |
+
+**Verdict :** Même mécanisme qu'Achats Canada — perte totale à l'étage fetch, cause identique établie par la Tâche 7. **Étiquette : bug logique**, pas limite technologique — vérifié spécifiquement pour ce site, pas recopié : la page est elle aussi intégralement rendue côté serveur (`curl` nu suffit à récupérer les 10 liens de la page 1 et le compte total), et la seule mention de « captcha » dans le HTML est un script reCAPTCHA générique du framework, jamais déclenché comme challenge actif sur cette page. Aucune preuve d'un besoin technique réel de navigateur/anti-bot pour cette source — la cause du gap est une dépendance manquante dans l'image déployée. **Remarque secondaire, hors cause racine :** même une fois `playwright` réinstallé, la config actuelle (`max_pages: 10`) ne couvrirait que ~100 des 927 résultats actifs (pagination réelle du site : 93 pages) — un gap de couverture distinct et plus mineur, signalé ici pour une phase 2 mais non quantifié en détail (non demandé par ce brief, dont le périmètre est le diagnostic du gap partagé Playwright).
 
 ### Le Devoir (source id 15, parser_type ledevoir)
 _(rempli par sa propre tâche)_
 
 ### Nova Scotia (source id 16, parser_type playwright)
-_(rempli par sa propre tâche)_
+
+**Cause racine — pas re-diagnostiquée ici :** identique aux deux sources ci-dessus et à la Tâche 7 : `playwright` absent du conteneur `staging_api`.
+
+**Vérité terrain, méthode 1 (`curl`, 2026-09-02 ~17:18 UTC, `list_url` exact) — résultat qualitativement différent des deux autres sources :**
+```
+$ curl -s -o novascotia.html -D novascotia_headers.txt -w "HTTP_STATUS:%{http_code} SIZE:%{size_download}\n" \
+  "https://procurement-portal.novascotia.ca/tenders" \
+  -A "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+HTTP_STATUS:200 SIZE:45659
+
+$ python3 -c "
+import re
+html = open('novascotia.html', encoding='utf-8').read()
+text = re.sub(r'<script.*?</script>', '', html, flags=re.S)
+text = re.sub(r'<style.*?</style>', '', text, flags=re.S)
+text = re.sub(r'<[^>]+>', ' ', text)
+print(re.sub(r'\s+', ' ', text).strip())
+"
+Please enable JavaScript to view the page content. Your support ID is: 1940417650305047215. This
+question is for testing whether you are a human visitor and to prevent automated spam submission.
+Audio is not supported in your browser. What code is in the image? submit Your support ID is:
+1940417650305047215 .
+
+$ grep -c "tender-row\|no-results-message\|<tr" novascotia.html
+0
+
+$ cat novascotia_headers.txt | grep -i "^Set-Cookie"
+Set-Cookie: TSa5dfd5f7029=...; Max-Age=30; Path=/
+Set-Cookie: TSa5dfd5f7078=...; Max-Age=30; Path=/
+Set-Cookie: TS48fffa9d027=...; Path=/
+```
+**Contrairement à Achats Canada et Ville de Montréal, `curl` seul est bloqué ici par une véritable page de challenge anti-bot** : image CAPTCHA audio/visuelle, texte « Please enable JavaScript… testing whether you are a human visitor », et cookies préfixés `TS...` — signature caractéristique d'un bot-defense JS-challenge (famille F5/Shape). Aucune table, aucune ligne `tender-row`, rien ne correspond au `wait_for_selector` configuré (`table tbody tr, .no-results-message, [class*=tender-row]`) : un simple client HTTP sans exécution JS ne peut pas voir le contenu réel de cette page.
+
+**Vérité terrain, méthode 2 — navigateur réel (Playwright MCP, Chromium standard, sans stealth), pour vérifier si l'anti-bot bloquerait aussi le fetcher `playwright` du pipeline une fois le module installé :**
+```
+navigate → https://procurement-portal.novascotia.ca/tenders
+Page Title: "Procurement Opportunities and Public Notices - Procurement Portal"
+```
+Le challenge anti-bot a été franchi **sans aucune interaction ni contournement spécifique** — juste l'exécution JS normale d'un navigateur réel (comportement identique à `fetch_playwright.py`, qui lance `pw.chromium.launch(headless=True)` avec un User-Agent Chrome standard, sans plugin stealth). Le contenu réel s'affiche : table `Tenders 29.7k` (29 740 résultats au total, tri par défaut « Posted Date DESC »), 6 lignes visibles (`table`/`tr` — correspond au `wait_for_selector` configuré), pagination jusqu'à la page 4957. Ceci confirme que le challenge cible les clients HTTP n'exécutant pas de JS (curl/httpx), pas les empreintes navigateur headless — un Playwright nu, tel que déjà codé dans `fetch_playwright.py`, suffit empiriquement à passer ce challenge.
+
+Avis manifestement pertinent pour une entreprise IT, actuellement `OPEN`, trouvé via la recherche du site elle-même (champ « Search Tender ID and Title », mot-clé « software ») :
+- **« RFP - Microsoft Software Licensing Solutions Partner »** (Tender ID `Doc3262756191`), Department of Cyber Security and Digital Solutions, publié le 20 Aug 2026, clôture 16 Sep 2026, statut `OPEN` — matche littéralement le mot-clé `it_services` « logiciel » (software = logiciel) et le mot-clé `it_consulting`/organisation « Cyber Security and Digital Solutions ».
+
+**Confirmation de l'entrée propre à cette source dans les logs de nœuds du run CA :**
+```
+$ python3 -c "
+import json
+d = json.load(open('fetch_listings.json'))
+e = [x for x in d[0]['data'] if x['source']['id']==16][0]
+print('status:', e['status'], '| error:', e['error'], '| listings:', len(e['listings']))
+"
+status: failed | error: playwright not installed | listings: 0
+```
+Identique aux deux autres sources `playwright` et à l'erreur générique de la Tâche 7 — confirmé pour cette source précisément : le run a échoué avant même de tenter le rendu, donc l'anti-bot lui-même n'a jamais été le facteur bloquant *sur ce run précis* — seule l'absence du module Python l'a été.
+
+**Requête `notices` (source_id=16, exécutée le 2026-09-02) :**
+```
+$ ssh -i ~/.ssh/id_ed25519 tender-ai@195.35.48.198 \
+  "docker exec staging_postgres psql -U tenderai -d tenderai_bf -c \
+  \"SELECT n.id, n.title, n.ref_no, n.deadline_at, n.is_duplicate, n.duplicate_of_id, cns.is_relevant, cns.relevance_score, cns.classification_method FROM notices n LEFT JOIN company_notice_status cns ON cns.notice_id=n.id AND cns.company_id=1 WHERE n.source_id=16 ORDER BY n.created_at DESC LIMIT 50;\""
+
+ id | title | ref_no | deadline_at | is_duplicate | duplicate_of_id | is_relevant | relevance_score | classification_method
+----+-------+--------+-------------+--------------+-----------------+-------------+-----------------+------------------------
+(0 rows)
+```
+Résultat attendu, non spécifique à cette source (cf. avertissement CA). Aucune ligne `company_notice_status` : aucun faux positif de classification à vérifier.
+
+**Gaps constatés :**
+
+| Titre | Vu par le pipeline ? | Étage où perdu/faux positif | Cause racine | Étiquette (bug/archi/techno) | Sévérité | Preuve |
+|---|---|---|---|---|---|---|
+| RFP - Microsoft Software Licensing Solutions Partner (`Doc3262756191`, statut `OPEN`) — matche le mot-clé IT « logiciel » | Non | Fetch (`fetch_listings`, branche `playwright`) | `playwright` absent du conteneur `staging_api` (Tâche 7) — le run échoue avant même de tenter le rendu, donc avant que l'anti-bot du site puisse intervenir | bug logique | Critique | `fetch_listings.json` : `status: failed`, `error: "playwright not installed"`, `listings: []` ; vérité terrain navigateur réel (Playwright MCP) : item retrouvé via recherche interne du site, statut `OPEN` confirmé |
+| Les ~29 734 autres résultats de la table (29 740 au total tous statuts confondus, dont un sous-ensemble `OPEN` actif au 2026-09-02 ; 0 vus par le pipeline) | Non | Fetch (`fetch_listings`, branche `playwright`) | Même cause — perte à 100%, pas un cas isolé | bug logique | Critique | `fetch_listings.json` : `listings: []` pour la totalité de la source ; vérité terrain navigateur réel : « 29740 Results » |
+
+**Verdict :** Contrairement aux deux autres sources `playwright` de cette section, Nova Scotia présente une **véritable barrière anti-bot** face aux clients HTTP simples (challenge JS + CAPTCHA audio, cookies `TS...` caractéristiques d'un bot-defense de type F5/Shape) — vérifié directement, pas supposé, et pas recopié depuis Achats Canada/Montréal où aucune barrière de ce type n'a été trouvée. Cela dit, un test indépendant avec un vrai navigateur Chromium **sans aucune mesure de stealth** (identique en substance au fetcher `fetch_playwright.py` du pipeline : `headless=True`, UA Chrome standard, pas de plugin d'évasion d'empreinte) a franchi ce challenge sans friction et affiché le contenu réel de la table de tenders — ce qui indique que le challenge cible spécifiquement les clients n'exécutant pas de JavaScript, pas les navigateurs headless en tant que tels. Sur la base de cette preuve directe, **l'étiquette retenue reste bug logique** (dépendance manquante) et non limite technologique : rien dans les preuves recueillies aujourd'hui ne montre qu'un Playwright nu, une fois installé, échouerait à passer ce challenge. Nuance à surveiller lors de la correction (non résolue ici, diagnostic seul) : ce test a été fait de façon interactive et ponctuelle — un comportement plus agressif de l'anti-bot face à un trafic automatisé répété/à grande échelle (rate-limiting progressif, détection comportementale à moyen terme) reste possible et n'a pas pu être exclu par ce test unique. **Remarque secondaire distincte, hors cause racine :** contrairement à Achats Canada et Montréal, les `patterns` de cette source ne définissent aucun `item_link_selector` — même une fois `playwright` réinstallé, `fetch_playwright.py` retomberait sur son mode « texte brut » (capture de `page.inner_text("body")` en un seul blob transmis à l'extraction LLM), un chemin de code différent de celui utilisé par les deux autres sources `playwright` de cette section, non vérifié plus avant ici.
 
 ### UNDP (source id 17, parser_type tavily_extract)
 _(rempli par sa propre tâche)_
