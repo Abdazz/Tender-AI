@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-TenderAI BF is a multi-agent RFP/tender harvester for Burkina Faso. It autonomously scrapes procurement portals, classifies opportunities using AI, deduplicates them, generates French-language DOCX reports, and delivers them via email. Stack: Python 3.11+, LangGraph, FastAPI, Next.js (React frontend), PostgreSQL, MinIO, APScheduler.
+TenderAI is a multi-agent RFP/tender harvester, multi-company/multi-tenant and multi-country. It autonomously scrapes procurement portals, classifies opportunities using AI, deduplicates them, generates French-language DOCX reports, and delivers them via email. Stack: Python 3.11+, LangGraph, FastAPI, Next.js (React frontend), PostgreSQL, MinIO, APScheduler.
 
 ## Git workflow (mandatory)
 

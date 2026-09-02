@@ -12,7 +12,7 @@
 | 1 | Séparation du monorepo en 3 repos | 🟡 12/14 tâches — tâche 12 (cutover staging) ✅ **terminée et validée** (backend+infra+frontend). Tâches 13/14 bloquées, attente confirmation utilisateur | 3 repos GitHub séparés |
 | 2 | Modernisation des dépendances | ✅ Terminé (2 sous-projets) | Synced dans `tenderai-backend/staging` |
 | 3 | Pipeline split (harvest/delivery multi-company) | ✅ **Terminé** (16/16 tâches + revue finale + fix wave) | `tenderai-backend`, branche `staging` (poussé sur GitHub) |
-| 4 | Audit qualité des pipelines | ⬜ Pas commencé | À faire sur `tenderai-backend` |
+| 4 | Audit qualité des pipelines | ✅ **Diagnostic terminé** (rapport 28 constats, 15 sections + sommaire exécutif, toutes revues). Corrections : phase 2, non démarrée | Audit sur `tenderai-backend` (monorepo, docs uniquement) |
 | 5 | Auth & API multi-company | ✅ **Terminé** (sous-projets A+B, backend+frontend, mergés). Reste : déploiement staging conjoint | `tenderai-backend` + `tenderai-frontend`, branches `staging` (poussées sur GitHub) |
 
 **Règle appliquée depuis le 2026-08-27 :** tout travail postérieur au chantier 1 (repo-split) se fait sur les nouveaux repos, jamais sur le monorepo. Le monorepo `Tender-AI` (ce dépôt) n'accueille plus aucun développement backend/pipeline actif — il ne reçoit que la maintenance, les docs, et reste le dépôt de production jusqu'au cutover (tâches 12-14 du chantier 1).
@@ -153,7 +153,9 @@ Aucun des deux n'est lié au renommage `tenderai_bf` → `tenderai` — découve
 - Deux redéploiements `tenderai-infra` ont rencontré un échec transitoire de `ssh-keyscan` ("Add server to known hosts") — le serveur restait joignable et healthy via HTTPS pendant ce temps (confirmé par `curl`), donc diagnostiqué comme un problème de connectivité SSH runner→serveur ponctuel, pas un problème de code ou de configuration. Résolu par nouvel essai (`gh run rerun`), sans investigation plus poussée nécessaire.
 
 ### Chantier 4 — Audit qualité des pipelines
-- Pas commencé. Aucun spec/plan écrit à ce jour.
+- **Phase diagnostic terminée** (17/17 tâches). Spec : `docs/superpowers/specs/2026-09-01-pipeline-quality-audit-design.md`. Plan : `docs/superpowers/plans/2026-09-01-pipeline-quality-audit.md`. Rapport final : `docs/audits/2026-09-01-pipeline-quality-audit-report.md`.
+- **Constat clé du sommaire exécutif :** le pipeline a un problème de disponibilité, pas de pertinence — BF et CA sont tous deux à 0 avis persisté en base ; BF perd ~91 % de sa vérité terrain en amont via plusieurs bugs logiques indépendants (transaction `persist_notices` tout-ou-rien, pagination UNGM/UEMOA, parse DGCMEF, dédoublonnage), et CA est entièrement bloqué par deux artefacts de déploiement manquants (`playwright` absent, `TAVILY_API_KEY` non définie) plus un id de modèle Groq déprécié ; sur 28 constats, un seul est une limite technologique non confirmée (The Commonwealth) — tout le reste est un bug logique trivialement corrigeable. Le spike Scrapling est différé ("pas maintenant") : deux de ses trois justifications habituelles sont falsifiées par les preuves de cet audit.
+- **Les correctifs ne sont pas faits dans ce chantier** — ils forment une phase 2 séparée, non démarrée, conditionnée à la revue du rapport par l'utilisateur.
 
 ### Tâche autonome (à planifier) — Spike Scrapling
 - **Proposée par l'utilisateur le 2026-08-31, à traiter comme tâche autonome et indépendante** (pas rattachée au chantier 4, même si thématiquement proche de l'audit qualité des pipelines).
