@@ -414,7 +414,176 @@ En `MDY`, `"29-09-2026"` est lu comme mois=29 → `DatetimeFieldOverflow` (le cr
 Sévérité globale de la source : **critique** — entre la perte majoritaire par pagination (~74 % des avis actifs jamais vus, chiffre recalculé actifs contre actifs — voir correctif méthodologique plus haut) et la contribution directe au crash qui a fait perdre l'intégralité de la collecte BF du jour, UNGM est la source dont les défauts ont le plus large rayon d'impact sur ce run, alors même qu'aucun de ses trois défauts n'exige de refonte architecturale ou technologique pour être corrigé.
 
 ### UEMOA (source id 11, parser_type html-tender)
-_(rempli par sa propre tâche — Task 5)_
+
+**Particularité structurelle de cette source :** `parser_type: html-tender` est un fetcher générique piloté entièrement par la colonne `patterns` en DB (`src/tenderai/agents/nodes/fetch_html_tender.py`) — aucun code spécifique à UEMOA. Le fetcher lit `card_selector`/`title_selector`/`pdf_selector`/`deadline_selector` pour parser une page HTML, plus trois paramètres pertinents pour cette tâche : `ssl_verify` (passé tel quel à `httpx.AsyncClient(verify=...)`), `max_pages` et `pagination_url` (lignes 41-48) — **le code implémente déjà une boucle de pagination générique** : `if max_pages > 1 and pagination_url: for page in range(2, max_pages+1): urls.append(pagination_url.format(page=page))`. Cette boucle n'est déclenchée que si les deux valeurs sont configurées.
+
+**Configuration en base pour `source_id=11` (requête exécutée le 2026-09-02) :**
+```
+$ ssh -i ~/.ssh/id_ed25519 tender-ai@195.35.48.198 \
+  "docker exec staging_postgres psql -U tenderai -d tenderai_bf -c \
+  \"SELECT id, name, parser_type, list_url, patterns FROM sources WHERE id=11;\""
+
+ id |          name           | parser_type |              list_url               |                                                                                                                                         patterns
+----+-------------------------+-------------+-------------------------------------+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ 11 | UEMOA - Appels d'offres | html-tender | https://www.uemoa.int/appel-d-offre | {"entity": "UEMOA", "location": "Zone UEMOA", "max_pages": 1, "ssl_verify": false, "pdf_selector": "a[href*='opportunite_affaire']", "card_selector": "div.swiper-slide div.news-box", "title_selector": "div.new-txt p", "deadline_selector": "time", "deadline_attribute": "datetime"}
+(1 row)
+```
+`max_pages: 1` et **aucune clé `pagination_url`** — la boucle de pagination du code (lignes 46-48 ci-dessus) ne peut donc jamais se déclencher pour cette source, quelle que soit la valeur de `max_pages`. **Comparaison directe avec Enabel** (même `parser_type: html-tender`, section suivante du rapport, Task 6) : ses `patterns` (extraits de `fetch_listings.json`) portent `"max_pages": 3, "pagination_url": "https://www.enabel.be/fr/marches-publics/page/{page}/?in_country=1726&is_status=0"` — la même mécanique de pagination générique **est activement utilisée avec succès pour une autre source BF**, ce qui confirme sans ambiguïté qu'il s'agit ici d'un défaut de configuration ponctuel pour UEMOA, pas d'une limite du code ni de l'architecture.
+
+**Vérification `ssl_verify: false` — corrélation avec un problème de certificat réel (recherché conformément à la consigne du brief) :**
+```
+$ curl -s -o /dev/null -w "HTTP_STATUS:%{http_code} SIZE:%{size_download}\n" \
+  "https://www.uemoa.int/appel-d-offre" -A "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"
+HTTP_STATUS:000 SIZE:0
+$ echo $?
+60
+
+$ echo | openssl s_client -connect www.uemoa.int:443 -servername www.uemoa.int 2>&1 | grep -iE "verify|subject|issuer|error"
+verify error:num=20:unable to get local issuer certificate
+verify return:1
+verify error:num=21:unable to verify the first certificate
+verify return:1
+verify return:1
+subject=CN = *.uemoa.int
+issuer=C = GB, O = Sectigo Limited, CN = Sectigo Public Server Authentication CA DV R36
+Verification error: unable to verify the first certificate
+Verify return code: 21 (unable to verify the first certificate)
+```
+Confirmé : `www.uemoa.int` ne sert pas le certificat intermédiaire Sectigo dans sa chaîne TLS — un défaut de configuration serveur réel et reproduisible côté UEMOA (`curl` échoue avec le code 60 « SSL certificate problem » sans `-k`/`verify=false`, indépendamment de tout client HTTP du pipeline). `ssl_verify: false` est donc un contournement légitime et nécessaire pour cette source précise, pas une cause de perte : `fetch_listings.json` confirme `status: "success"`, `error: null` pour UEMOA, sans aucune trace d'erreur TLS dans le run audité — **`ssl_verify: false` n'est pas un gap, aucune corrélation avec une perte d'avis.**
+
+**Vérité terrain — `max_pages: 1` face à la pagination réelle du site (collecte le 2026-09-02, ~16h45 UTC, un jour après le run audité ; la structure et le volume du listing ne dépendent pas de la date d'audit) :**
+```
+$ for p in 0 1 2 19; do
+  curl -s -k -o /tmp/uemoa_live_p$p.html -w "page=$p HTTP_STATUS:%{http_code} SIZE:%{size_download}\n" \
+    "https://www.uemoa.int/appel-d-offre?page=$p" -A "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"
+done
+page=0 HTTP_STATUS:200 SIZE:92590
+page=1 HTTP_STATUS:200 SIZE:93258
+page=2 HTTP_STATUS:200 SIZE:93472
+page=19 HTTP_STATUS:200 SIZE:86651
+```
+Lien de pagination « Dernière page » extrait du HTML brut de `page=0` :
+```
+<li class="page-item pager__item--last">
+  <a href="?page=19" title="Aller à la dernière page" class="page-link">
+    <span class="visually-hidden">Dernière page</span>
+    <span aria-hidden="true">Last »</span>
+  </a>
+</li>
+```
+→ **20 pages au total (`page=0` à `page=19`)**, mécanisme de pagination server-side classique (paramètre `?page=N` en GET, pas d'AJAX/JS requis — donc trivialement rejouable par `httpx`, aucun rendu JS nécessaire). Décompte indépendant des items (sélecteur `div.swiper-slide` + `div.new-txt p`, identique au `card_selector`/`title_selector` du pipeline) par page, et vérification qu'il s'agit bien d'avis distincts et non de doublons de carrousel :
+```
+$ python3 -c "
+import re
+for p in [0,1,2,19]:
+    html = open(f'/tmp/uemoa_live_p{p}.html', encoding='utf-8').read()
+    titles = re.findall(r'<p class=\"pb-2\"style=\"font-size:12px;\">\s*(.*?)</p>', html, re.S)
+    print(f'page={p}: {len(titles)} titres')
+"
+page=0: 10 titres
+page=1: 10 titres
+page=2: 10 titres
+page=19: 4 titres
+
+$ python3 -c "
+p0 = set(open('/tmp/uemoa_slide_hrefs_p0.txt').read().split())
+p1 = set(open('/tmp/uemoa_slide_hrefs_p1.txt').read().split())
+p2 = set(open('/tmp/uemoa_slide_hrefs_p2.txt').read().split())
+print('p0 & p1 overlap:', p0 & p1)
+print('p0 & p2 overlap:', p0 & p2)
+print('p1 & p2 overlap:', p1 & p2)
+"
+p0 & p1 overlap: set()
+p0 & p2 overlap: set()
+p1 & p2 overlap: set()
+```
+(fichiers `uemoa_slide_hrefs_pN.txt` = liens PDF `href` extraits de chaque bloc `swiper-slide`, un fichier par page, comparés par intersection d'ensembles Python) — **zéro chevauchement entre les 3 premières pages : 30 avis strictement distincts**, confirmant qu'il ne s'agit pas d'un artefact de carrousel dupliqué mais d'une vraie pagination de contenu. **Total du listing : 19×10 + 4 = 194 avis distincts** (pages 0 à 18 pleines à 10, page 19 partielle à 4) contre **10 récupérés par le pipeline** (`max_pages: 1` = uniquement `list_url`, équivalent à `page=0`) — **184 avis, soit ~94,8 % du listing, jamais fetchés**, uniquement à cause de la valeur de configuration `max_pages: 1`.
+
+Deux exemples concrets, manifestement pertinents pour une entreprise IT, trouvés en page 2 (jamais atteinte par le pipeline) :
+```
+$ python3 -c "
+import re
+html = open('/tmp/uemoa_live_p2.html', encoding='utf-8').read()
+titles = re.findall(r'<p class=\"pb-2\"style=\"font-size:12px;\">\s*(.*?)</p>', html, re.S)
+for t in titles: print('-', re.sub(r'\s+',' ', t).strip())
+"
+- Addendum N° 1 de l'Appel d'Offres relatif aux travaux de réhabilitation de 50 km de pistes rurales au profit de la SIRAT SA
+- Addendum N°01 de l'Avis d'Appel d'Offres Ouvert International relatif à la réalisation des travaux de forages d'exploitation ...
+- Avis d'appel d'offres international relatif à l'équipement et mise en exploitation du data center et du réseau local CAM
+- Avis d'appel d'offre international relatif à l'acquisition d'équipements de contrôle technique mobile mixte VL/PL et fixe VL au profit du CN...
+- Avis d'appel d'offre international relatif à la fourniture, au deploiement et pose de lampadaires solaires de type photovoltaïques pour l'éc...
+- Avis d'Appel d'Offres Ouvert International relatif à la couverture en assurance santé du personnel de la SBEE
+- Appel d'offres ouvert N° 023/2026/AO/COM/UEMOA relatif au renouvellement du contrat de licences Microsoft Enterprise Agreement (EA) de ...
+- Avis d'Appel d'Offres Ouvert International relatif à l'acquisition des Equipements de Protection Collective (EPC) au profit de la SBEE.
+- Addendum N°1 de l'appel d'offre international relatif à la construction de trente-cinq (35) Guichets Uniques de Protection Sociale (GUPS) et...
+- Communiqué No 005/CCM/2026 relatif à la modification des caractéristiques techniques et au report de la date limite de de dépôt des offres d...
+```
+- **« Avis d'appel d'offres international relatif à l'équipement et mise en exploitation du data center et du réseau local CAM »** — matche littéralement les mots-clés `it_services` « data center » et « réseau local » de la config de classification (Contraintes globales du plan). Il s'agit en outre de l'avis **original** du marché DAOI N°022 : le pipeline n'a vu (via `fetch_listings.json`, page 0) que ses deux addenda (« Addendum n°1 » et « Addendum n°2 DAOI N°022 »), jamais l'avis initial lui-même — l'avis « source » de ce marché IT est donc totalement invisible pour le pipeline.
+- **« Appel d'offres ouvert N° 023/2026/AO/COM/UEMOA relatif au renouvellement du contrat de licences Microsoft Enterprise Agreement (EA) »** — même famille que l'item déjà vu en page 0 (« Renouvellement des licences et support Microsoft o365 »), mais un marché distinct (licences Enterprise Agreement vs support O365), jamais atteint.
+
+**Résultat du pipeline (run `785adda4-f28c-4f3c-af0a-74b7e775d0b5`) :**
+
+- `fetch_listings.json` (`grep -i "uemoa" -A5 fetch_listings.json`, extrait des `patterns` confirmé identique à la DB ci-dessus) : `status: "success"`, `error: null`, exactement **10 listings** — un seul appel HTTP à `list_url`, aucune boucle de pagination (cohérent avec `max_pages: 1` et l'absence de `pagination_url`). Les 10 items correspondent exactement à la page 0 de la vérité terrain (mêmes titres, mêmes deadlines ISO). `"content": null` — le fetcher `html-tender` ne conserve jamais le HTML brut dans le log de nœud (ligne 80 du code), seulement les `listings` déjà parsés.
+- `extract_item_links.json` : **10/10** survivent intacts (`Counter({'ungm': 15, "UEMOA - Appels d'offres": 10, ...})`).
+- `fetch_items.json` : **10/10** avec `status: "success"` pour chacune des 10 URLs PDF UEMOA (vérifié individuellement, aucune erreur SSL/réseau au niveau item malgré `ssl_verify: false`).
+- `parse_extract.json` (27 items au total toutes sources BF confondues) : **10/10** UEMOA survivent intacts (`Counter({'ungm': 15, "UEMOA - Appels d'offres": 10, "Enabel - Marchés publics Burkina Faso": 1, 'joffres.net': 1})`, cf. section UNGM).
+- `deduplicate.json` (24 items uniques au total) : **8/10** seulement — 2 items UEMOA disparaissent du tableau `unique_items` sans trace de `duplicate_of_id` (même limite de logging déjà documentée section UNGM : `deduplicate.py` ligne 310 ne logue que les survivants). Reconstitution par comparaison titre-à-titre entre les 10 titres de `parse_extract.json` et les 8 de `deduplicate.json` :
+```
+$ python3 -c "
+import json
+pe = {i['title'] for i in json.load(open('parse_extract.json'))[0]['data'] if i.get('source')==\"UEMOA - Appels d'offres\"}
+dd = {i['title'] for i in json.load(open('deduplicate.json'))[0]['data'] if i.get('source')==\"UEMOA - Appels d'offres\"}
+print(pe - dd)"
+{"Addendum N°1 au Dao 071 relatif aux travaux de réhabilitation des directions départementales du cadre de vie et des transports (DDCVT), de l'annexe de la DDCVT du mono, et des divisions territoriales de come et d'Allada",
+ "Addendum n°1 DAOI N°022 relatif à l'équipement et mise en exploitation du data center et du réseau local CAM"}
+```
+Vérification indépendante de la cause exacte (`reference`/`ref_no` vides des deux côtés pour toutes les paires UEMOA — le court-circuit `item_ref == unique_ref` de `deduplicate.py` ligne 186 ne peut donc jamais s'appliquer ; retombée systématique sur `fuzz.ratio()` du titre, lignes 191-195, même mécanisme que documenté section UNGM) :
+```
+$ python3 -c "
+from rapidfuzz import fuzz
+t1 = 'ADDENDUM N°02 relatif aux travaux de réhabilitation des directions départementales du cadre de vie et des transports (DDCVT), de l\'annexe de la DDCVT du mono, et des divisions territoriales de come et d\'Allada'
+t2 = 'Addendum N°1 au Dao 071 relatif aux travaux de réhabilitation des directions départementales du cadre de vie et des transports (DDCVT), de l\'annexe de la DDCVT du mono, et des divisions territoriales de come et d\'Allada'
+print('DDCVT pair:', fuzz.ratio(t1, t2))
+t3 = 'Addendum n°2 DAOI N°022 relatif à l\'équipement et mise en exploitation du data center et du réseau local CAM'
+t4 = 'Addendum n°1 DAOI N°022 relatif à l\'équipement et mise en exploitation du data center et du réseau local CAM'
+print('DAOI 022 pair:', fuzz.ratio(t3, t4))
+"
+DDCVT pair: 93.92523364485982
+DAOI 022 pair: 99.07407407407408
+```
+Les deux paires dépassent très largement le seuil configuré de 75 % (`tenderai-infra/settings.yaml`, `deduplication_threshold: 0.75`, `deduplication_method: "hash_similarity"`) — **« Addendum N°1 » et « Addendum N°02 »/« n°1 »/« n°2 » d'un même marché sont des documents distincts** (chacun modifie ou complète l'appel d'offres à un moment différent, avec potentiellement des changements de délai ou de spécifications), pas des doublons du même avis, mais leur titre quasi identique déclenche systématiquement la similarité fuzzy et **le premier des deux atteint reste seul dans `unique_items`, l'autre est éliminé silencieusement**. Nuance notée : la paire DDCVT (travaux de réhabilitation, sans pertinence IT évidente) a un impact pratique faible ; la paire DAOI N°022 (data center/réseau local, cf. mots-clés IT ci-dessus) est la plus préoccupante — mais son avis original et son propre « Addendum n°1 » étaient de toute façon déjà hors de portée du fetch (page 2, gap ci-dessus), donc l'impact net aujourd'hui de ce bug de dédoublonnage se limite à empêcher que « Addendum n°1 DAOI N°022 » ne soit jamais visible même le jour où la pagination serait corrigée.
+- `persist_notices.json` : `{}` (vide) — run entier en échec avant tout commit (Finding #1). Répartition du batch de 24 items (Finding #1) : **UEMOA a contribué 8 des 24 items** envoyés à `persist_notices`, tous les 8 survivants de `deduplicate.json` ci-dessus (dont « Renouvellement des licences et support Microsoft o365 » et « Addendum n°2 DAOI N°022 … data center et … réseau local », les deux items UEMOA manifestement pertinents IT ayant survécu jusque-là).
+- `notices` (DB, `source_id=11`) : **0 ligne** (requête Step 3 exécutée le 2026-09-02) :
+```
+$ ssh -i ~/.ssh/id_ed25519 tender-ai@195.35.48.198 \
+  "docker exec staging_postgres psql -U tenderai -d tenderai_bf -c \
+  \"SELECT n.id, n.title, n.ref_no, n.deadline_at, n.is_duplicate, n.duplicate_of_id, cns.is_relevant, cns.relevance_score, cns.classification_method FROM notices n LEFT JOIN company_notice_status cns ON cns.notice_id=n.id AND cns.company_id=1 WHERE n.source_id=11 ORDER BY n.created_at DESC LIMIT 50;\""
+
+ id | title | ref_no | deadline_at | is_duplicate | duplicate_of_id | is_relevant | relevance_score | classification_method
+----+-------+--------+-------------+--------------+-----------------+-------------+-----------------+------------------------
+(0 rows)
+```
+Résultat attendu et non spécifique à UEMOA (Finding #1, avertissement en tête de section BF) : les 8 items UEMOA survivants ont été engloutis, comme les items Joffres.net et UNGM, par le `DatetimeFieldOverflow` transversal provoqué par une notice UNGM distincte dans la même transaction tout-ou-rien. Aucune ligne `company_notice_status` n'existe (livraison jamais déclenchée) : aucun faux positif de classification ne peut être vérifié pour cette source sur ce run.
+
+**Gaps constatés :**
+
+| Titre | Vu par le pipeline ? | Étage où perdu/faux positif | Cause racine | Étiquette (bug/archi/techno) | Sévérité | Preuve |
+|---|---|---|---|---|---|---|
+| Avis d'appel d'offres international relatif à l'équipement et mise en exploitation du data center et du réseau local CAM (avis original du marché DAOI N°022, page 2 du listing live) — matche littéralement les mots-clés IT « data center » et « réseau local » | Non | Fetch (`fetch_listings`, branche `html-tender`) | `max_pages: 1` dans `patterns` (DB) sans `pagination_url` configuré — la boucle de pagination générique de `fetch_html_tender.py` (lignes 42-48) ne se déclenche jamais ; le même mécanisme est actif et fonctionnel pour Enabel (`max_pages: 3` + `pagination_url`), confirmant un défaut de configuration ponctuel, pas de code | bug logique | Critique | `patterns` DB (`max_pages:1`, pas de `pagination_url`) vs `patterns` Enabel ; pager live « Dernière page » → `?page=19` ; titre confirmé en page 2 (`uemoa_live_p2.html`, curl) |
+| Appel d'offres ouvert N° 023/2026/AO/COM/UEMOA relatif au renouvellement du contrat de licences Microsoft Enterprise Agreement (EA) (page 2 du listing live) — même famille IT que l'item Microsoft o365 vu en page 0 | Non | Fetch (`fetch_listings`, branche `html-tender`) | Même cause que ci-dessus | bug logique | Critique | Idem — titre confirmé en page 2 (curl) |
+| Les ~182 autres avis des pages 1 à 19 jamais récupérés (194 avis au total sur le listing complet — pages 0 à 18 pleines à 10, page 19 partielle à 4 — contre 10 vus par le pipeline) | Non | Fetch (`fetch_listings`, branche `html-tender`) | Même cause — perte structurelle sur ~94,8 % du listing, pas un cas isolé | bug logique | Critique | Pager « Dernière page » → `?page=19` ; 0 chevauchement vérifié par intersection d'ensembles Python entre les items des pages 0, 1, 2 (30 avis strictement distincts sur 3 pages) |
+| Addendum N°1 au Dao 071 relatif aux travaux de réhabilitation des DDCVT (…) | Oui, jusqu'à `parse_extract` inclus (10/10) ; perdu à `deduplicate` | Dédoublonnage (`deduplicate`, méthode `hash_similarity`) | Faux positif de similarité fuzzy sur titre gabarit (`fuzz.ratio` = 93,9 % > seuil 75 %) entre deux addenda distincts (N°1 et N°02) du même DAO 071 — références vides des deux côtés, court-circuit de comparaison exacte jamais applicable | bug logique | Modérée (perte réelle et vérifiée, mais pertinence IT non évidente — travaux de réhabilitation de bâtiments) | `parse_extract.json` : 10/10 UEMOA présents ; `deduplicate.json` : 8/10, item absent sans `duplicate_of_id` ; calcul indépendant `rapidfuzz.fuzz.ratio()` = 93,92523... ; `tenderai-infra/settings.yaml` (seuil 0.75, méthode hash_similarity) |
+| Addendum n°1 DAOI N°022 relatif à l'équipement et mise en exploitation du data center et du réseau local CAM — matche littéralement les mots-clés IT « data center »/« réseau local » | Oui, jusqu'à `parse_extract` inclus (10/10) ; perdu à `deduplicate` | Dédoublonnage (`deduplicate`, méthode `hash_similarity`) | Même mécanisme que ci-dessus, `fuzz.ratio` = 99,1 % > seuil 75 % vs « Addendum n°2 DAOI N°022 » (qui, lui, a survécu) | bug logique | Modérée (bug réel et distinct du gap de pagination ci-dessus, mais impact net aujourd'hui limité car l'avis original et cet addendum sont de toute façon déjà hors de portée du fetch à cause de `max_pages:1`) | `deduplicate.json` : 8/10, item absent ; calcul indépendant `rapidfuzz.fuzz.ratio()` = 99,07407... |
+| Les 8 avis UEMOA ayant survécu jusqu'à `deduplicate` (dont « Renouvellement des licences et support Microsoft o365 » et « Addendum n°2 DAOI N°022 … data center et … réseau local », tous deux manifestement pertinents IT) | Oui, jusqu'à `deduplicate` inclus (8/8, tous `is_duplicate: false`) | Persist (`persist_notices`) | Non spécifique à UEMOA : transaction unique tout-ou-rien du run BF entier (`persist_notices.py`, un seul `db.commit()` après la boucle) qui échoue à cause d'une notice **UNGM** distincte (`LRFP-2026-9205898`) — voir Finding #1 | bug logique | Critique | `deduplicate.json` : 8 items `source: "UEMOA - Appels d'offres"`, tous `is_duplicate: false` ; Finding #1 (batch INSERT de 24 lignes dont 8 UEMOA) ; requête SQL Step 3 (`source_id=11`) → 0 lignes |
+
+**Verdict :** UEMOA cumule deux défauts indépendants, tous deux corrigibles par un changement de configuration/code localisé (aucune limite architecturale ni technologique) :
+
+1. **Fetch — perte massive par pagination absente** (le défaut le plus sévère, en volume comme en netteté de la preuve) : le listing live compte 194 avis répartis sur 20 pages server-side (`?page=0` à `?page=19`, pagination GET classique sans JS), le pipeline n'en récupère que 10 (la page 0) à cause de `max_pages: 1` combiné à l'absence de `pagination_url` dans `patterns` — soit **~94,8 % du listing jamais vu**, dont au moins 2 avis manifestement pertinents IT identifiés en page 2 seule (le marché data center/réseau local CAM et son renouvellement de licences Microsoft EA). Il ne s'agit ni d'un blocage anti-bot (aucune erreur, `status: "success"` constant) ni d'une limite du fetcher : le mécanisme de boucle de pagination existe déjà dans `fetch_html_tender.py` et **fonctionne activement pour Enabel**, la source BF voisine utilisant le même `parser_type`. Corriger `max_pages` et ajouter un `pagination_url` dans les `patterns` de la source UEMOA en DB suffirait — c'est un changement de configuration, pas de code, à plus forte raison **bug logique** et non une limite architecturale.
+2. **Dédoublonnage — deux faux positifs de similarité vérifiés**, même mécanisme que documenté section UNGM : des addenda successifs d'un même marché (N°1, N°02/n°2) partagent un gabarit de titre à 93,9 % et 99,1 % de similarité, au-dessus du seuil 75 % configuré, et sont fusionnés à tort alors qu'ils sont des documents distincts (chacun peut porter une information nouvelle — report de délai, modification de spécification). Un de ces deux cas concerne directement le marché IT data center/réseau local CAM, mais son impact pratique aujourd'hui reste subordonné au gap de pagination ci-dessus (l'avis original de ce marché n'est de toute façon pas atteint par le fetch).
+
+`ssl_verify: false` a été vérifié corrélé à un problème de certificat serveur réel et reproductible (chaîne TLS incomplète côté `www.uemoa.int`, confirmé indépendamment par `curl`/`openssl s_client`) — **ce n'est pas un gap** : le paramètre fonctionne comme contournement légitime, `fetch_listings.json` ne montre aucune trace d'échec réseau/TLS pour cette source sur le run audité.
+
+Sévérité globale de la source : **critique**, portée principalement par la perte de pagination (~185 avis actifs/jour jamais vus, dont des marchés IT identifiés) ; le crash transversal du Finding #1 a ensuite empêché même les 8 avis survivants (dont 2 manifestement pertinents IT) d'atteindre la base de données ce jour précis — un problème indépendant de UEMOA lui-même, déjà documenté et dont la source n'est pas responsable.
 
 ### Enabel (source id 12, parser_type html-tender)
 _(rempli par sa propre tâche — Task 6)_
