@@ -15,7 +15,7 @@ Strategy:
 
 import base64
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import httpx
 
@@ -55,7 +55,7 @@ Si tu ne vois aucun appel d'offres ou avis de marché public sur cette image, re
 
 def _extract_image_urls(html: str, max_days: int = 7) -> list[str]:
     """Parse data-src attributes for recent avis image URLs."""
-    cutoff = datetime.now(tz=timezone.utc) - timedelta(days=max_days)
+    cutoff = datetime.now(tz=UTC) - timedelta(days=max_days)
     urls: list[str] = []
     seen: set[str] = set()
 
@@ -70,9 +70,7 @@ def _extract_image_urls(html: str, max_days: int = 7) -> list[str]:
         m = re.search(r"(\d{4}-\d{2}-\d{2})", base)
         if m:
             try:
-                img_date = datetime.strptime(m.group(1), "%Y-%m-%d").replace(
-                    tzinfo=timezone.utc
-                )
+                img_date = datetime.strptime(m.group(1), "%Y-%m-%d").replace(tzinfo=UTC)
                 if img_date < cutoff:
                     continue
             except ValueError:
@@ -171,9 +169,7 @@ async def fetch_ledevoir(source: dict, run_id: str) -> dict:
 
         image_urls = _extract_image_urls(html, max_days=max_days)
         if not image_urls:
-            logger.warning(
-                "No recent avis images found on Le Devoir", run_id=run_id
-            )
+            logger.warning("No recent avis images found on Le Devoir", run_id=run_id)
             return {
                 "source": source,
                 "content": "[]",
@@ -224,6 +220,7 @@ async def fetch_ledevoir(source: dict, run_id: str) -> dict:
 
         # Return in the same format as tavily_extract listings
         import json
+
         normalized = [
             {
                 "url": n.get("source_image_url", _LISTING_URL),

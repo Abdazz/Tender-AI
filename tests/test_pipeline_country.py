@@ -45,7 +45,6 @@ def test_run_sets_country_id_on_state():
         graph = TenderAIGraph()
 
         captured_state = {}
-        original_invoke = graph.app.invoke
 
         def mock_invoke(state, *a, **kw):
             captured_state["country_id"] = state.country_id
@@ -90,9 +89,7 @@ def test_load_sources_filters_by_country_id():
     mock_first.last_error_at = None
     mock_first.last_error_message = None
 
-    with patch(
-        "tenderai_bf.agents.nodes.load_sources.get_db_context"
-    ) as mock_ctx:
+    with patch("tenderai_bf.agents.nodes.load_sources.get_db_context") as mock_ctx:
         mock_ctx.return_value.__enter__ = lambda s: mock_session
         mock_ctx.return_value.__exit__ = MagicMock(return_value=False)
 
@@ -201,9 +198,7 @@ def test_email_report_uses_country_to_address():
     state.report_bytes = b"fake pdf"
     state.report_url = "http://minio/report.docx"
 
-    with patch(
-        "tenderai_bf.agents.nodes.email_report.send_report_email"
-    ) as mock_send:
+    with patch("tenderai_bf.agents.nodes.email_report.send_report_email") as mock_send:
         mock_send.return_value = True
 
         email_report_node(state)

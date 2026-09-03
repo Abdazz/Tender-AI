@@ -6,10 +6,9 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from langgraph.graph import END, StateGraph
+from langgraph.graph import END, START, StateGraph
 from pydantic import BaseModel, Field
 
-from ..config import settings
 from ..country_store import CountryStore
 from ..db import get_db_context
 from ..logging import get_logger, log_run_complete, log_run_error, log_run_start
@@ -117,7 +116,7 @@ class TenderAIState(BaseModel):
                 setattr(self.stats, key, value)
 
 
-from ._cfg import cfg  # noqa: E402 — re-export for callers that import from graph
+from ._cfg import cfg  # noqa: E402, F401 — re-export for callers that import from graph
 
 
 def _state_get(state: Any, key: str, default: Any = None) -> Any:
@@ -180,40 +179,13 @@ def error_handler(state: TenderAIState) -> TenderAIState:
     return state
 
 
-class _AppWrapper:
-    """Thin wrapper around CompiledStateGraph that allows attribute overrides.
-
-    LangGraph's CompiledStateGraph is a Pydantic v1 model and refuses
-    arbitrary attribute assignment.  Wrapping it here lets tests replace
-    `invoke` with a mock without touching the compiled graph object.
-    """
-
-    def __init__(self, compiled_graph: Any) -> None:
-        object.__setattr__(self, "_compiled", compiled_graph)
-        object.__setattr__(self, "_overrides", {})
-
-    def __setattr__(self, name: str, value: Any) -> None:
-        self._overrides[name] = value
-
-    def __getattr__(self, name: str) -> Any:
-        overrides = object.__getattribute__(self, "_overrides")
-        if name in overrides:
-            return overrides[name]
-        return getattr(object.__getattribute__(self, "_compiled"), name)
-
-    def invoke(self, *args: Any, **kwargs: Any) -> Any:
-        overrides = object.__getattribute__(self, "_overrides")
-        fn = overrides.get("invoke", object.__getattribute__(self, "_compiled").invoke)
-        return fn(*args, **kwargs)
-
-
 class TenderAIGraph:
     """LangGraph pipeline for TenderAI BF."""
 
     def __init__(self):
         """Initialize the pipeline graph."""
         self.graph = self._build_graph()
-        self.app = _AppWrapper(self.graph.compile())
+        self.app = self.graph.compile()
         logger.info("TenderAI pipeline graph initialized")
 
     def _build_graph(self) -> StateGraph:
@@ -242,7 +214,7 @@ class TenderAIGraph:
         workflow.add_node("error_handler", error_handler)
 
         # Set entry point
-        workflow.set_entry_point("load_sources")
+        workflow.add_edge(START, "load_sources")
 
         # Sequence of steps that must short-circuit on error.
         sequential_edges = [

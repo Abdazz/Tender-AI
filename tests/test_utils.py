@@ -1,6 +1,6 @@
 """Unit tests for utility functions."""
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -88,11 +88,11 @@ class TestDateUtils:
         now = get_burkina_faso_now()
 
         # Deadline in 3 days (urgent)
-        urgent_deadline = now.replace(day=now.day + 3)
+        urgent_deadline = now + timedelta(days=3)
         assert is_deadline_urgent(urgent_deadline, urgency_days=7) is True
 
         # Deadline in 10 days (not urgent)
-        normal_deadline = now.replace(day=now.day + 10)
+        normal_deadline = now + timedelta(days=10)
         assert is_deadline_urgent(normal_deadline, urgency_days=7) is False
 
 
@@ -187,13 +187,16 @@ class TestPDFUtils:
 
 def test_tavily_settings_defaults():
     from tenderai_bf.config import settings
+
     assert hasattr(settings, "tavily")
     assert settings.tavily.max_results == 10
     assert settings.tavily.search_depth == "basic"
 
+
 def test_tavily_settings_api_key_from_env(monkeypatch):
     monkeypatch.setenv("TAVILY_API_KEY", "tvly-test-key")
     from tenderai_bf.config import TavilySettings
+
     s = TavilySettings()
     assert s.api_key.get_secret_value() == "tvly-test-key"
 
